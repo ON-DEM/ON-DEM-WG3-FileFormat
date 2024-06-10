@@ -1,0 +1,42 @@
+ 
+image: python:3.8
+
+stages:
+  - build
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  DOC_DIR: "$CI_PROJECT_DIR/sphinx"
+
+cache:
+  paths:
+    - .cache/pip
+
+before_script:
+  - python -m venv venv
+  - source venv/bin/activate
+  - pip install sphinx sphinx_rtd_theme sphinxcontrib-bibtex sphinx.ext.mathjax sphinx_automodapi sphinx_automodsumm
+
+build:
+  stage: build
+  script:
+    - cd $DOC_DIR
+    - make html
+    - make latexpdf
+  artifacts:
+    paths:
+      - build/html
+      - build/latex/*.pdf
+
+pages:
+  stage: deploy
+  script:
+    - mv build/html public
+    - cp build/latex/*.pdf public/
+    - echo "<a href=\"document.pdf\">Download PDF</a>" >> public/index.html
+  artifacts:
+    paths:
+      - public
+  only:
+    - main
