@@ -166,7 +166,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (master_doc, 'wp3.tex', 'wp3 Documentation',
-     'Bruno Chareyre', 'manual'),
+     'ON-DEM', 'manual'),
 ]
 
 
