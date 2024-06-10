@@ -1,5 +1,5 @@
  
-image: debian:trixie
+image: ubuntu:22.04
 
 stages:
   - build
