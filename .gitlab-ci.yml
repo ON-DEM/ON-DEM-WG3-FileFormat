@@ -10,16 +10,7 @@ variables:
   DOC_DIR: "$CI_PROJECT_DIR/sphinx"
 
 before_script:
-  - apt-get update && apt-get install -y python3 \
-    python3-pip \
-    python3-venv \
-    python3-sphinx \
-    python3-sphinx-automodapi \
-    python3-sphinxcontrib.bibtex \
-    texlive \
-    texlive-latex-extra \
-    latexmk \
-    graphviz
+  - apt-get clean && apt-get update && apt-get install -y python3 python3-sphinx python3-sphinx-automodapi python3-sphinxcontrib.bibtex texlive texlive-latex-extra latexmk graphviz
 
 build:
   stage: build
