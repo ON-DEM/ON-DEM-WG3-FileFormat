@@ -1,6 +1,6 @@
- 
+image: python:3.8 
 #image: ubuntu:22.04
-image: gricad-registry.univ-grenoble-alpes.fr/cdbenchmark/benchmark/yade:latest
+#image: gricad-registry.univ-grenoble-alpes.fr/cdbenchmark/benchmark/yade:latest
 
 stages:
   - build
