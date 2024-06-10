@@ -16,6 +16,7 @@ cache:
 before_script:
   - python -m venv venv
   - source venv/bin/activate
+  - pip install --upgrade pip
   - pip install sphinx sphinx_rtd_theme sphinxcontrib-bibtex sphinx.ext.mathjax sphinx_automodapi sphinx_automodsumm
 
 build:
