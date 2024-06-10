@@ -1,16 +1,17 @@
  
-image: ubuntu:22.04
+#image: ubuntu:22.04
+image: gricad-registry.univ-grenoble-alpes.fr/cdbenchmark/benchmark/yade:latest
 
 stages:
   - build
   - deploy
 
 variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   DOC_DIR: "$CI_PROJECT_DIR/sphinx"
 
 before_script:
-  - apt-get update && apt-get install -y \
+  - apt-get update
+  - apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
