@@ -47,7 +47,7 @@ pages:
     - ls
     - mv $DOC_DIR/build/html public
     - cp $DOC_DIR/build/latex/*.pdf public/
-    - cp $CI_PROJECT_DIR/build/* public/
+    - cp -r $CI_PROJECT_DIR/build/* public/
     - echo "<a href=\"document.pdf\">Download PDF</a>" >> public/index.html
   artifacts:
     paths:
