@@ -43,6 +43,7 @@ build:
 pages:
   stage: deploy
   script:
+    - ls
     - mv $DOC_DIR/build/html public
     - cp $DOC_DIR/build/latex/*.pdf public/
     - echo "<a href=\"document.pdf\">Download PDF</a>" >> public/index.html
