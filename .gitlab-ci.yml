@@ -1,6 +1,6 @@
 #image: python:3.8 
 #image: ubuntu:22.04
-image: gricad-registry.univ-grenoble-alpes.fr/on-dem/model-data
+image: gricad-registry.univ-grenoble-alpes.fr/on-dem/model-data:main
 
 variables:
   DOCKER_DRIVER: overlay2
