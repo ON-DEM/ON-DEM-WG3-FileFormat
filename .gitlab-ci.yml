@@ -1,5 +1,7 @@
 #image: python:3.8 
 #image: ubuntu:22.04
+
+# This is the self-generated image, see Dockerfile and the manual step "docker"
 image: gricad-registry.univ-grenoble-alpes.fr/on-dem/model-data:main
 
 variables:
@@ -7,9 +9,6 @@ variables:
 
 services: 
   - docker:dind
-
-
-
 
 stages:
   - docker
@@ -38,14 +37,14 @@ build:
     - make latexpdf
   artifacts:
     paths:
-      - build/html
-      - build/latex/*.pdf
+      - $DOC_DIR/build/html
+      - $DOC_DIR/build/latex/*.pdf
 
 pages:
   stage: deploy
   script:
-    - mv build/html public
-    - cp build/latex/*.pdf public/
+    - mv $DOC_DIR/build/html public
+    - cp $DOC_DIR/build/latex/*.pdf public/
     - echo "<a href=\"document.pdf\">Download PDF</a>" >> public/index.html
   artifacts:
     paths:
