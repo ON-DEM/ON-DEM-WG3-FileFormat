@@ -20,6 +20,7 @@ variables:
   DOC_DIR: "$CI_PROJECT_DIR/sphinx"
 
 docker:
+  image: docker
   stage: docker
   when: manual
   script:
