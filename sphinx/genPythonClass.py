@@ -85,14 +85,16 @@ def parse_class_definitions(file_path):
 
     return imports, classes
 
-def generate_mymodule_py(imports, classes, output_file):
+def generate_mymodule_py(imports, classes, output_file, with_preamble):
     with open(output_file, 'w') as file:
-        # import base types first, since they are not repeated in each input file
-        #file.write('import vector3\n')
-        file.write('from vector3 import *\n')
-        # Write imports and placeholder definitions
-        file.write(PLACEHOLDER_DEFINITIONS)
-        file.write('\n')
+        if with_preamble:
+            # import base types first, since they are not repeated in each input file
+            file.write('from vector3 import *\n')
+            # Write imports and placeholder definitions
+            file.write(PLACEHOLDER_DEFINITIONS)
+            file.write('\n')
+        
+        # these imports must be in the input txt directly
         for imp in imports:
             file.write(f'{imp}\n')
         file.write('\n')
@@ -140,10 +142,10 @@ if not os.path.exists(build_dir):
     os.makedirs(build_dir)
 
 imports, bodies = parse_class_definitions('body.txt')
-generate_mymodule_py(imports, bodies, os.path.join(build_dir, 'body.py'))
+generate_mymodule_py(imports, bodies, os.path.join(build_dir, 'body.py'),True)
 
 imports, interactions = parse_class_definitions('interaction.txt')
-generate_mymodule_py(imports, interactions, os.path.join(build_dir, 'interaction.py'))
+generate_mymodule_py(imports, interactions, os.path.join(build_dir, 'interaction.py'),True)
 
 imports, interactions = parse_class_definitions('model.txt')
-generate_mymodule_py(imports, interactions, os.path.join(build_dir, 'model.py'))
+generate_mymodule_py(imports, interactions, os.path.join(build_dir, 'model.py'),False)
