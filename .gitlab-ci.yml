@@ -2,15 +2,32 @@
 image: ubuntu:22.04
 #image: gricad-registry.univ-grenoble-alpes.fr/cdbenchmark/benchmark/yade:latest
 
+variables:
+  DOCKER_DRIVER: overlay2
+
+services: 
+  - docker:dind
+
+
+
+
 stages:
+  - docker
   - build
   - deploy
 
 variables:
   DOC_DIR: "$CI_PROJECT_DIR/sphinx"
 
-before_script:
-  - apt-get clean && apt-get update && apt-get install -y python3 python3-sphinx python3-sphinx-automodapi python3-sphinxcontrib.bibtex texlive texlive-latex-extra latexmk graphviz
+docker:
+  stage: docker
+  when: manual
+  script:
+    - echo $CI_REGISTRY
+    - echo $CI_REGISTRY_IMAGE
+    - docker login $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE .
+    - docker push $CI_REGISTRY/multiscale-projects/femxdem-mpi
 
 build:
   stage: build
