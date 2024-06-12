@@ -7,6 +7,7 @@ Simulation Data
 ===============
 
 This document defines data classes and attributes of the objects in a DEM simulation.
+It is available in `PDF <https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data/wp3.pdf>`_ and in `HTML <https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data/index.html>`_ formats.
 
 .. toctree::
    :maxdepth: 2
