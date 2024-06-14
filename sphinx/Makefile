@@ -16,10 +16,10 @@ help:
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
-	cp ../*.txt ./
+	cp ../*.py ./
 	cp ../*.bib ./
 # 	rm -rf api; rm -rf build  # comment in for erasing cached output in local execution
-	python3 genPythonClass.py
+# 	python3 genPythonClass.py
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 	rm ./*.txt
 	rm ./*.bib
