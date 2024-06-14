@@ -18,8 +18,5 @@ help:
 %: Makefile
 	cp ../*.py ./
 	cp ../*.bib ./
-# 	rm -rf api; rm -rf build  # comment in for erasing cached output in local execution
-# 	python3 genPythonClass.py
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
-	rm ./*.txt
-	rm ./*.bib
+
