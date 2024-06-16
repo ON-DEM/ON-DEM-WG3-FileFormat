@@ -1,7 +1,7 @@
 Basic types
 ___________
 
-.. automodapi:: vector3
+.. automodapi:: base_types
 ..    :no-main-docstr:
 ..    :no-heading:
 ..    :no-inheritance-diagram:

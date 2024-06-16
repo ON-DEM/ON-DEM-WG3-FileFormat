@@ -18,5 +18,6 @@ help:
 %: Makefile
 	cp ../*.py ./
 	cp ../*.bib ./
+	python3 setSphinxDocstrings.py
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
