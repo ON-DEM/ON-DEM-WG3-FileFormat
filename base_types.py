@@ -1,3 +1,17 @@
+# generic types
+
+class SomeStateClass:
+    """abstract state class"""
+    pass
+
+class SomeShapeClass:
+    """abstract shape class"""
+    pass
+
+class SomeMaterialClass:
+    """abstract material class"""
+    pass
+
 # Simple vector, matrix, quaternion
 
 class Vector3:
