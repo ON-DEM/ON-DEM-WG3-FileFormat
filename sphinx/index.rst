@@ -9,6 +9,15 @@ Simulation Data
 This document defines data classes and attributes of the objects in a DEM simulation.
 It is available in `PDF <https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data/wp3.pdf>`_ and in `HTML <https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data/index.html>`_ formats.
 
+System of units
+_______________
+
+Physical quantities are assigned to many variables, not units. The actual system of units can be specified as one of the scene's attribute (`scene.units` defines the units for time, length, mass). By convention, the notation for the quantities is:
+- time: *T*
+- length: *L*
+- mass: *M*
+- force: *F*
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
