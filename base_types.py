@@ -1,5 +1,7 @@
 # generic types
 
+from typing import List # for initialization of lists
+
 class SomeStateClass:
     """abstract state class"""
     pass
