@@ -12,7 +12,4 @@ Information on a simulation
 Detailed content
 ----------------
    
-.. automodapi:: scene
-   :no-heading:
-   :no-inheritance-diagram:
-   :skip: SomeStateClass, SomeMaterialClass, SomeShapeClass, Vector3, Matrix3, Quaternion
+.. autoclass:: scene
