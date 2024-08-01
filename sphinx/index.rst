@@ -12,11 +12,11 @@ It is available in `PDF <https://on-dem.gricad-pages.univ-grenoble-alpes.fr/mode
 System of units
 _______________
 
-Physical quantities are assigned to many variables, not units. The actual system of units can be specified as one of the scene's attribute (`scene.units` defines the units for time, length, mass). By convention, the notation for the quantities is:
-* time: *T*
-* length: *L*
-* mass: *M*
-* force: *F*
+Physical quantities are assigned to many variables, not units. The actual system of units can be specified as one of the scene's attribute (`scene.units` defines the units for time, length, mass). By convention, the notations for the quantities are:
+ * time: *[T]*
+ * length: *[L]*
+ * mass: *[M]*
+ * force: *[F]*
 
 .. toctree::
    :maxdepth: 2
