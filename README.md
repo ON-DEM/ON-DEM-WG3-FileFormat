@@ -4,7 +4,7 @@ This project defines generic data structures to exchange DEM simulations data. I
 
 The generated pages are located [here](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data).
 
-## Local execution:
+## Local build:
 
 
 ```
@@ -15,3 +15,19 @@ make pdf
 
 ```
 The output is in ```sphinx/build```
+
+The prerequisites are listed [here](https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/blob/main/Dockerfile).
+
+Alternatively, run the docker image from registry directly:
+```
+docker run -it gricad-registry.univ-grenoble-alpes.fr/on-dem/model-data:main
+```
+
+## Remote build:
+
+ - Click the "edit" button when viewing a source file
+ - Edit
+ - Type a commit message to explain the change and give a name to the branch (unless you commit to master branch)
+ - Click "commit"
+ 
+ The new html/pdf should appear in the [job artifacts](https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines) after ~30sec. After a commit to master branch it may need a few minutes for the update to be reflected in [the public pages](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data).
