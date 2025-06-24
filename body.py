@@ -45,7 +45,7 @@ class sphere(shape):
 
 
 class box(shape):
-    """A pearallelepiped"""
+    """A parallelepiped"""
     sizes: Vector3 = Vector3(0,0,0)
     """length in each direction of space"""
 
