@@ -1,14 +1,14 @@
 from base_types import *
 
-class SomeStateClass:
+class some_state_class:
     """abstract state class"""
     pass
 
-class SomeShapeClass:
+class some_shape_class:
     """abstract shape class"""
     pass
 
-class SomeMaterialClass:
+class some_material_class:
     """abstract material class"""
     pass
 
