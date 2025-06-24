@@ -8,8 +8,8 @@ class intr:
     id2: int = None
     """**[mandatory]** id of body 2"""
     virtual: bool = False
-    """*[optional]* weither the interaction is real (else it is in a virtual state - typically without contact)"""
-    lifespan: float = 0
+    """*[optional]* weither the interaction is real/active (else it is in a virtual state - typically without contact)"""
+    creation_time: float = 0
     """*[optional]* time since the interaction was created (example of optional data)"""
 
 class normal(intr):

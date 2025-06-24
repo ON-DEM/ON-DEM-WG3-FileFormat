@@ -11,7 +11,7 @@ The generated pages are located [here](https://on-dem.gricad-pages.univ-grenoble
 git clone https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data.git
 cd sphinx
 make html
-make pdf
+make latexpdf
 
 ```
 The output is in ```sphinx/build```
