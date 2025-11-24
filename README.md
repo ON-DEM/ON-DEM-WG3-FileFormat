@@ -2,6 +2,11 @@
 
 This project defines generic data structures to exchange DEM simulations data. It is supported by the [ON-DEM network](https://on-dem.atlassian.net/wiki/spaces/Index/overview?homepageId=13304023)
 
+The source code is mirrored in ON-DEM's project at Github.com:
+[https://github.com/ON-DEM/ON-DEM-WG3-FileFormat](https://github.com/ON-DEM/ON-DEM-WG3-FileFormat)
+and in Gricad's gitlab:
+[(https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data)](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data) where it is built.
+
 The generated pages are located [here](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data).
 
 ## Local build:
