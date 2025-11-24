@@ -1,0 +1,29 @@
+name: Mirror to GitLab
+on:
+  push:
+    branches:
+      - '**'
+  delete:
+    branches:
+      - '**'
+  create:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # IMPORTANT: fetch all refs
+
+      - name: Mirror to GitLab
+        env:
+          GITLAB_URL: https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data.git
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          git remote add gitlab "https://oauth2:${GITLAB_TOKEN}@${GITLAB_URL}"
+          git push --mirror gitlab
