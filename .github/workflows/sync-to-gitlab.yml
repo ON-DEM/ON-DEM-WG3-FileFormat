@@ -1,29 +1,49 @@
 name: Mirror to GitLab
+
 on:
   push:
-    branches:
-      - '**'
+    branches: ['**']
+    tags: ['**']
   delete:
-    branches:
-      - '**'
+    branches: ['**']
+    tags: ['**']
   create:
-    branches:
-      - '**'
+    branches: ['**']
   workflow_dispatch:
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout full repo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # IMPORTANT: fetch all refs
+          fetch-depth: 0
 
-      - name: Mirror to GitLab
+      - name: Add GitLab remote
         env:
           GITLAB_URL: ${{ secrets.GITLAB_URL }}
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
         run: |
           git remote add gitlab "https://oauth2:${GITLAB_TOKEN}@${GITLAB_URL}"
-          git push --mirror gitlab
+
+      - name: Push branches and tags except hidden refs
+        run: |
+          # Push branches
+          for branch in $(git for-each-ref --format='%(refname)' refs/heads/); do
+            git push gitlab "$branch"
+          done
+
+          # Push tags
+          for tag in $(git for-each-ref --format='%(refname)' refs/tags/); do
+            git push gitlab "$tag"
+          done
+
+          # Delete branches removed in GitHub
+          for branch in $(git for-each-ref --format='%(refname)' refs/heads/ --merged=HEAD); do
+            remote_branch="${branch#refs/heads/}"
+            if ! git show-ref --verify --quiet "refs/heads/$remote_branch"; then
+              git push gitlab ":refs/heads/$remote_branch"
+            fi
+          done
