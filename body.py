@@ -73,14 +73,13 @@ class polyhedron(shape):
     """*[optional]* list of positions of the vertices - mandatory"""
 
 
-"""
-class body(SomeStateClass,SomeShapeClass,SomeMaterialClass):
-    """a DEM body"""
-    state: type(SomeStateClass) = SomeStateClass()
-    """The state of the body, instance of a concrete state class"""
-    shape: type(SomeShapeClass) = SomeShapeClass()
-    """The shape of the body, instance of a concrete shape class"""
-    material: type(SomeMaterialClass) = SomeMaterialClass()
-    """The material of the body, instance of a concrete material class"""
-"""
+
+#class body(SomeStateClass,SomeShapeClass,SomeMaterialClass):
+#    """a DEM body"""
+#    state: type(SomeStateClass) = SomeStateClass()
+#    """The state of the body, instance of a concrete state class"""
+#    shape: type(SomeShapeClass) = SomeShapeClass()
+#    """The shape of the body, instance of a concrete shape class"""
+#    material: type(SomeMaterialClass) = SomeMaterialClass()
+#    """The material of the body, instance of a concrete material class"""
 
