@@ -3,14 +3,14 @@ ____________________________________
 
 This page displays all inherited members for each data type. To get back to normal display `click here <body.html>`_
 
-.. automodapi:: body
+.. automodapi:: bodies
    :no-main-docstr:
    :no-heading:
 
 Detailed contents
 *****************   
 
-.. automodule:: body
+.. automodule:: bodies
    :members:
    :undoc-members:
    :show-inheritance:
