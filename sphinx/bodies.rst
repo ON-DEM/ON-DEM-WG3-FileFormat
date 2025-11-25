@@ -9,10 +9,10 @@ This page displays only attributes added at a certain inheritance level. For see
    :no-heading:
    :skip: SomeStateClass, SomeMaterialClass, SomeShapeClass, Vector3, Matrix3, Quaternion
   
-.. .. inheritance-diagram:: bodies.box bodies.sphere bodies.polyhedron
-..    :top-classes: bodies.shape
+.. .. inheritance-diagram:: body.box body.sphere body.polyhedron
+..    :top-classes: body.shape
 
-.. .. automod-diagram:: bodies
+.. .. automod-diagram:: body
 ..    :skip: Vector3, Matrix3, Quaternion
 ..    
 .. .. automodapi:: bodies
