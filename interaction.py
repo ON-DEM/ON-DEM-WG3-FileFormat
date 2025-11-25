@@ -35,7 +35,7 @@ class shear_linear(shear):
 
 class normal_linear(shear):
     """linear-elasticity"""
-    ks: float = None
+    kn: float = None
     """shear stiffness [F/L] - mandatory"""
 
 class normal_hertz(normal):
