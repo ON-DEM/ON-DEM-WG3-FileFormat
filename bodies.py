@@ -68,9 +68,9 @@ class body:
     """**[mandatory]** clump id [$-$]"""
     body_id: int = None
     """**[mandatory]** body id [$-$]"""
-    state: type(state) = state()
+    body_state: type(state) = state()
     """**[mandatory]** body state [$-$]"""
-    shape: type(shape) = SomeShapeClass()
+    body_shape: type(shape) = shape()
     """**[mandatory]** body shape [$-$]"""
 
 
