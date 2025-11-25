@@ -13,10 +13,12 @@ The generated pages are located [here](https://on-dem.gricad-pages.univ-grenoble
 ## Local build:
 
 It should be noted that for a local build sphinx needs to be installed. This can be done by
+```
 pip install sphinx
 pip install sphinx-automodapi
 pip install sphinxcontrib-bibtex
-
+```
+The full set of prerequisites are listed [here](https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/blob/main/Dockerfile).
 
 ```
 git clone https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data.git
@@ -27,7 +29,6 @@ make latexpdf
 ```
 The output is in ```sphinx/build```
 
-The prerequisites are listed [here](https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/blob/main/Dockerfile).
 
 Alternatively, run the docker image from registry directly:
 ```
