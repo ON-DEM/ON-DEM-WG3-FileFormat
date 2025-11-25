@@ -16,7 +16,7 @@ def replace_latex_and_cite(file_path):
     with open(file_path, 'w') as file:
         file.write(content)
 
-replace_latex_and_cite('body.py')
+replace_latex_and_cite('bodies.py')
 replace_latex_and_cite('interaction.py')
 replace_latex_and_cite('materials.py')
 replace_latex_and_cite('model.py')
