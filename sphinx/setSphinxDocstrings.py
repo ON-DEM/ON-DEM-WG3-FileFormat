@@ -18,4 +18,6 @@ def replace_latex_and_cite(file_path):
 
 replace_latex_and_cite('body.py')
 replace_latex_and_cite('interaction.py')
+replace_latex_and_cite('materials.py')
 replace_latex_and_cite('model.py')
+replace_latex_and_cite('scene.py')
