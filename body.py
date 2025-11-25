@@ -12,72 +12,68 @@ class some_material_class:
     """abstract material class"""
     pass
 
+class body:
+    """class defining a body"""
+    material_id: int = -1
+    """**[mandatory]** material id [$-$]"""
+    clump_id: int = -1
+    """**[mandatory]** clump id [$-$]"""
+    body_id: int = None
+    """**[mandatory]** body id [$-$]"""
+    body_state: state
+    """**[mandatory]** body state [$-$]"""
+    body_shape: shape
+    """**[mandatory]** body shape [$-$]"""
 
 class state:
-    """mechanical state"""
+    """mechanical state of a body"""
     position: Vector3 = Vector3(0,0,0)
-    """coordinates - mandatory"""
+    """**[mandatory]** position [$L$]"""
     velocity: Vector3 = Vector3(0,0,0)
-    """translational velocity - mandatory"""
-    orientation: Quaternion = Quaternion(0,0,0)
-    """orientation - mandatory"""
-    spin: Vector3 = Vector3(0,0,0)
-    """rotational velocity - mandatory"""
-    mass: float = 0
-    """body's mass - mandatory"""
+    """**[mandatory]** translational velocity [$L T^{-1}$]"""
+    orientation: Quaternion = Quaternion(0,0,0,1)
+    """**[mandatory]** orientation [$-$]"""
+    angular_velocity: Vector3 = Vector3(0,0,0)
+    """**[mandatory]** angular velocity [$T^{-1}$]"""
+    mass: float = None
+    """**[mandatory]** body's mass [$M$]"""
     inertia: Matrix3 = Matrix3.zero
-    """tensor of inertia - mandatory"""
+    """**[mandatory]** tensor of inertia [$M L^{2}$]"""
+    volume: float = None
+    """**[mandatory]** volume [$L^{3}$]"""
 
 class thermal_state(state):
-    """mechanical + temperature state"""
-    temperature: float = 0
-    """body's temperature - optional"""
+    """mechanical + thermal state"""
+    temperature: float = None
+    """*[optional]* temperature [$\Theta$]"""
+
+class liquid_film(state):
+    """mechanical + liquid film state"""
+    liquid_film_volume: float = None
+    """*[optional]* liquid film volume [L^3]"""
 
 class shape:
-    """the shape of a body"""
-    color: Vector3 = Vector3(0,0,0)
-    """color of a body (RGB values)"""
+    """shape of a body"""
+    color: Vector3 = Vector3(1,1,1)
+    """*[optional]* RGB color values [$-$]"""
 
 class sphere(shape):
-    """A sphere"""
+    """sphere"""
     radius: float = None
-    """sphere radius - mandatory"""
-
+    """**[mandatory]** radius"""
 
 class box(shape):
-    """A parallelepiped"""
-    sizes: Vector3 = Vector3(0,0,0)
-    """length in each direction of space"""
-
+    """cuboid"""
+    dimensions: Vector3 = Vector3(0,0,0)
+    """**[mandatory]** length in each direction of space"""
 
 class polyhedron(shape):
     """A generic polyhedron"""
     vertices: list = []
-    """list of positions of the vertices - mandatory"""
+    """*[optional]* list of positions of the vertices - mandatory"""
 
 
-class material:
-    """material parameters"""
-    id: int = None
-    """unique identifier - mandatory"""
-    density: float = 0
-    """mass density - optional"""
-
-
-class elastic_mat(material):
-    """elastic material"""
-    young: float = 0
-    """uniaxial (Young) stiffness - mandatory"""
-    nu: float = 0
-    """Poisson coefficient (might be used as shear-to-normal stiffness ratio in some contact models) - mandatory"""
-
-
-class elastic_frictional_mat(elastic_mat):
-    """elastic-frictional material"""
-    friction: float = 0
-    """friction coefficient - optional"""
-
-
+"""
 class body(SomeStateClass,SomeShapeClass,SomeMaterialClass):
     """a DEM body"""
     state: type(SomeStateClass) = SomeStateClass()
@@ -86,5 +82,5 @@ class body(SomeStateClass,SomeShapeClass,SomeMaterialClass):
     """The shape of the body, instance of a concrete shape class"""
     material: type(SomeMaterialClass) = SomeMaterialClass()
     """The material of the body, instance of a concrete material class"""
-
+"""
 
