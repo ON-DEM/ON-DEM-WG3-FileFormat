@@ -14,6 +14,8 @@ The generated pages are located [here](https://on-dem.gricad-pages.univ-grenoble
 
 It should be noted that for a local build sphinx needs to be installed. This can be done by
 pip install sphinx
+pip install sphinx-automodapi
+pip install sphinxcontrib-bibtex
 
 
 ```
