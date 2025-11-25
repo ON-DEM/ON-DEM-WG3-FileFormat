@@ -1,10 +1,10 @@
 Bodies data
 ___________
 
-This page displays only attributes added at a certain inheritance level. For seeing all attributes of each data type see `this variant <body_full.html>`_
+This page displays only attributes added at a certain inheritance level. For seeing all attributes of each data type see `this variant <bodies_full.html>`_
 
 
-.. automodapi:: body
+.. automodapi:: bodies
    :no-main-docstr:
    :no-heading:
    :skip: SomeStateClass, SomeMaterialClass, SomeShapeClass, Vector3, Matrix3, Quaternion
@@ -15,7 +15,7 @@ This page displays only attributes added at a certain inheritance level. For see
 .. .. automod-diagram:: body
 ..    :skip: Vector3, Matrix3, Quaternion
 ..    
-.. .. automodapi:: body
+.. .. automodapi:: bodies
 ..    :no-heading:
 ..    :no-inheritance-diagram:
 ..    :no-main-docstr:
