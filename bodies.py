@@ -12,19 +12,6 @@ class some_material_class:
     """abstract material class"""
     pass
 
-class body:
-    """class defining a body"""
-    material_id: int = -1
-    """**[mandatory]** material id [$-$]"""
-    clump_id: int = -1
-    """**[mandatory]** clump id [$-$]"""
-    body_id: int = None
-    """**[mandatory]** body id [$-$]"""
-    body_state: state
-    """**[mandatory]** body state [$-$]"""
-    body_shape: shape
-    """**[mandatory]** body shape [$-$]"""
-
 class state:
     """mechanical state of a body"""
     position: Vector3 = Vector3(0,0,0)
@@ -72,6 +59,19 @@ class polyhedron(shape):
     vertices: list = []
     """*[optional]* list of positions of the vertices - mandatory"""
 
+
+class body:
+    """class defining a body"""
+    material_id: int = -1
+    """**[mandatory]** material id [$-$]"""
+    clump_id: int = -1
+    """**[mandatory]** clump id [$-$]"""
+    body_id: int = None
+    """**[mandatory]** body id [$-$]"""
+    state: type(state) = state()
+    """**[mandatory]** body state [$-$]"""
+    shape: type(shape) = SomeShapeClass()
+    """**[mandatory]** body shape [$-$]"""
 
 
 #class body(SomeStateClass,SomeShapeClass,SomeMaterialClass):
