@@ -9,7 +9,11 @@ and in Gricad's gitlab:
 
 The generated pages are located [here](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data).
 
+
 ## Local build:
+
+It should be noted that for a local build sphinx needs to be installed. This can be done by
+pip install sphinx
 
 
 ```
