@@ -33,10 +33,10 @@ class shear_linear(shear):
     ks: float = None
     """shear stiffness [F/L] - mandatory"""
 
-class normal_linear(shear):
+class normal_linear(normal):
     """linear-elasticity"""
-    ks: float = None
-    """shear stiffness [F/L] - mandatory"""
+    kn: float = None
+    """normal stiffness [F/L] - mandatory"""
 
 class normal_hertz(normal):
     """Hertzian interaction in the normal direction"""
