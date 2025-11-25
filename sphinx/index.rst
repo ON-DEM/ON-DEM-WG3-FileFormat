@@ -25,6 +25,7 @@ Physical quantities are assigned to many variables, not units. The actual system
    basic_types
    scene
    body
+   materials
    interaction
    model
    bibliography
