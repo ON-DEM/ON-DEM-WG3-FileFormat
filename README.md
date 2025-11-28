@@ -18,10 +18,15 @@ pip install sphinx
 pip install sphinx-automodapi
 pip install sphinxcontrib-bibtex
 ```
-The full set of prerequisites are listed [here](https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/blob/main/Dockerfile).
+For debian distributions, the prerequisites (also visible [here](https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/blob/main/Dockerfile)) are
+```
+apt-get install python3 python3-sphinx python3-sphinx-automodapi python3-sphinxcontrib.bibtex texlive texlive-latex-extra latexmk graphviz
+```
+
+Then:
 
 ```
-git clone https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data.git
+git clone https://github.com/ON-DEM/ON-DEM-WG3-FileFormat.git
 cd sphinx
 make html
 make latexpdf
