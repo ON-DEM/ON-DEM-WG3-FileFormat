@@ -15,35 +15,34 @@ class intr:
 class normal(intr):
     """interaction in the normal direction"""
     normal: Vector3 = Vector3(0,0,0)
-    """unit normal [-] - mandatory"""
+    """**[mandatory]** unit normal [$-$]"""
     normal_force: float = 0
-    """normal force magnitude (positive in traction) [F] - mandatory"""
+    """**[mandatory]** normal force magnitude (positive in traction) [$F$]"""
 
 class shear(intr):
     """interaction in the tangential (or shear) direction"""
     shear_force: Vector3 = Vector3(0,0,0)
-    """shear force [F]"""
+    """shear force [$F$]"""
 
 class intr3D(normal, shear):
     """3 DOFs interaction combining normal and shear forces"""
 
-
 class shear_linear(shear):
     """linear-elasticity"""
     ks: float = None
-    """shear stiffness [F/L] - mandatory"""
+    """**[mandatory]** shear stiffness [$F/L$]"""
 
 class normal_linear(normal):
     """linear-elasticity"""
-    ks: float = None
-    """shear stiffness [F/L] - mandatory"""
+    kn: float = None
+    """**[mandatory]** normal stiffness [$F/L$]"""
 
 class normal_hertz(normal):
     """Hertzian interaction in the normal direction"""
     hertz_young: float = None
-    """equivalent Young modulus [F/L²] - mandatory"""
+    """**[mandatory]** equivalent Young modulus [$F/L²$]"""
     hertz_poisson: float = None
-    """equivalent Poisson coefficient [-] - mandatory"""
+    """**[mandatory]** equivalent Poisson coefficient [$-$]"""
 
 
 class linear_3D(intr3D, normal_linear, shear_linear):

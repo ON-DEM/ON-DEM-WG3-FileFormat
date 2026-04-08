@@ -1,17 +1,5 @@
 from base_types import *
 
-class some_state_class:
-    """abstract state class"""
-    pass
-
-class some_shape_class:
-    """abstract shape class"""
-    pass
-
-class some_material_class:
-    """abstract material class"""
-    pass
-
 class state:
     """mechanical state of a body"""
     position: Vector3 = Vector3(0,0,0)
@@ -24,7 +12,7 @@ class state:
     """**[mandatory]** angular velocity [$T^{-1}$]"""
     mass: float = None
     """**[mandatory]** body's mass [$M$]"""
-    inertia: Matrix3 = Matrix3.zero
+    inertia: Matrix3 = Matrix3.zero()
     """**[mandatory]** tensor of inertia [$M L^{2}$]"""
     volume: float = None
     """**[mandatory]** volume [$L^{3}$]"""
@@ -57,7 +45,7 @@ class box(shape):
 class polyhedron(shape):
     """A generic polyhedron"""
     vertices: list = []
-    """*[optional]* list of positions of the vertices - mandatory"""
+    """**[mandatory]** list of positions of the vertices"""
 
 
 class body:

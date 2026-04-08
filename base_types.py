@@ -2,15 +2,15 @@
 
 from typing import List # for initialization of lists
 
-class SomeStateClass:
+class some_state_class:
     """abstract state class"""
     pass
 
-class SomeShapeClass:
+class some_shape_class:
     """abstract shape class"""
     pass
 
-class SomeMaterialClass:
+class some_material_class:
     """abstract material class"""
     pass
 
@@ -57,7 +57,7 @@ class Quaternion:
         self.w = w
 
     def __repr__(self):
-        return f"Vector3({self.x}, {self.y}, {self.z}, {self.w})"
+        return f"Quaternion({self.x}, {self.y}, {self.z}, {self.w})"
     
     def __getitem__(self, index: int) -> float:
         if index == 0:
@@ -69,7 +69,7 @@ class Quaternion:
         elif index == 3:
             return self.w
         else:
-            raise IndexError("Index out of range for Vector3")
+            raise IndexError("Index out of range for Quaternion")
 
     def __setitem__(self, index: int, value: float) -> None:
         if index == 0:
@@ -79,38 +79,53 @@ class Quaternion:
         elif index == 2:
             self.z = value
         elif index == 3:
-            self.z = value
+            self.w = value
         else:
-            raise IndexError("Index out of range for Vector3")
+            raise IndexError("Index out of range for Quaternion")
         
 class Matrix3:
-    """A 3x3 matrix class"""
-    
-    zero = None
-    identity = None
+    """A simple 3x3 matrix class."""
 
     def __init__(self, elements=None):
         if elements is None:
-            elements = [[0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0]]
-        self.elements = elements
+            elements = [
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+            ]
 
-    @staticmethod
-    def initialize_static_attributes():
-        Matrix3.zero = Matrix3([[0.0, 0.0, 0.0],
-                                [0.0, 0.0, 0.0],
-                                [0.0, 0.0, 0.0]])
-        Matrix3.identity = Matrix3([[1.0, 0.0, 0.0],
-                                    [0.0, 1.0, 0.0],
-                                    [0.0, 0.0, 1.0]])
+        if len(elements) != 3 or any(len(row) != 3 for row in elements):
+            raise ValueError("Matrix3 must be initialized with a 3x3 list")
 
+        self.elements = [[float(value) for value in row] for row in elements]
 
     def __repr__(self):
-        return (f"Matrix3({self.m11}, {self.m12}, {self.m13},\n"
-                f"        {self.m21}, {self.m22}, {self.m23},\n"
-                f"        {self.m31}, {self.m32}, {self.m33})")
-    
-    @staticmethod
-    def zero():
-        return Matrix3()
+        return (
+            f"Matrix3([{self.elements[0][0]}, {self.elements[0][1]}, {self.elements[0][2]}], "
+            f"[{self.elements[1][0]}, {self.elements[1][1]}, {self.elements[1][2]}], "
+            f"[{self.elements[2][0]}, {self.elements[2][1]}, {self.elements[2][2]}])"
+        )
+
+    def __getitem__(self, index: int):
+        return self.elements[index]
+
+    def __setitem__(self, index: int, value):
+        if len(value) != 3:
+            raise ValueError("Each row of Matrix3 must have exactly 3 elements")
+        self.elements[index] = [float(v) for v in value]
+
+    @classmethod
+    def zero(cls):
+        return cls([
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ])
+
+    @classmethod
+    def identity(cls):
+        return cls([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ])

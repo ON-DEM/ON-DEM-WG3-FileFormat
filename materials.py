@@ -44,5 +44,5 @@ class material_visco_elastic_variable_COR(material_elastic_constants):
 	"""This material describes visco-elastic behaviour with variable coefficient of restitution"""
 
 	dissipative_constant: float = None
-	"""**[mandatory]** dissipative constant, $A$, [$ $]"""
+	"""**[mandatory]** dissipative constant, $A$, [$-$]"""
 
