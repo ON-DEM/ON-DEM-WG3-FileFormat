@@ -1,0 +1,134 @@
+{
+  "_comment": "ON-DEM schema field → YADE Python API mapping. Each entry maps a schema field name to how it is accessed in YADE. Keys are 'module.class.field' or 'class.field' or just 'field' (least specific). More specific keys take precedence.",
+
+  "scene": {
+    "time":      "O.time",
+    "timestep":  "O.dt",
+    "gravity":   "_get_gravity()",
+    "units":     "['second', 'meter', 'kilogram']"
+  },
+
+  "body": {
+    "body_id":    "b.id",
+    "material_id":"b.material.id",
+    "clump_id":   "b.clumpId"
+  },
+
+  "state": {
+    "position":         "b.state.pos",
+    "velocity":         "b.state.vel",
+    "orientation":      "b.state.ori",
+    "angular_velocity": "b.state.angVel",
+    "mass":             "b.state.mass",
+    "inertia":          "b.state.inertia",
+    "volume":           "_sphere_volume(b)"
+  },
+
+  "thermal_state": {
+    "temperature": "b.state.T"
+  },
+
+  "liquid_film": {
+    "liquid_film_volume": "b.state.liquidFilmVolume"
+  },
+
+  "sphere": {
+    "radius": "b.shape.radius"
+  },
+
+  "box": {
+    "dimensions": "[b.shape.extents[0]*2, b.shape.extents[1]*2, b.shape.extents[2]*2]"
+  },
+
+  "polyhedron": {
+    "vertices": "[[v[0],v[1],v[2]] for v in b.shape.vertices]"
+  },
+
+  "material_general": {
+    "density":              "mat.density",
+    "friction_coefficient": "float(np.tan(mat.frictionAngle)) if hasattr(mat,'frictionAngle') else 0.0",
+    "id":                   "mat.id"
+  },
+
+  "material_elastic_constants": {
+    "young":   "mat.young",
+    "poisson": "mat.poisson"
+  },
+
+  "material_spring_constants": {
+    "normal_stiffness": "mat.kn",
+    "shear_stiffness":  "mat.ks"
+  },
+
+  "material_visco_elastic_constants_COR": {
+    "damping_coefficient_normal": "mat.cn",
+    "damping_coefficient_shear":  "mat.cs"
+  },
+
+  "material_visco_elastic_variable_COR": {
+    "dissipative_constant": "mat.alpha"
+  },
+
+  "intr": {
+    "id1":      "i.id1",
+    "id2":      "i.id2",
+    "virtual":  "not i.isReal",
+    "lifespan": "i.phys.lifespan if hasattr(i.phys,'lifespan') else 0.0"
+  },
+
+  "normal": {
+    "normal":       "i.geom.normal",
+    "normal_force": "i.phys.normalForce.norm()"
+  },
+
+  "shear": {
+    "shear_force": "i.phys.shearForce"
+  },
+
+  "shear_linear": {
+    "ks": "i.phys.ks"
+  },
+
+  "normal_linear": {
+    "ks": "i.phys.kn"
+  },
+
+  "normal_hertz": {
+    "hertz_young":   "i.phys.kno",
+    "hertz_poisson": "i.phys.kso"
+  },
+
+  "_interaction_geometry": {
+    "contact_point":      "i.geom.contactPoint",
+    "overlap":            "i.geom.penetrationDepth",
+    "reference_radius_1": "i.geom.refR1",
+    "reference_radius_2": "i.geom.refR2"
+  },
+
+  "_wall": {
+    "axis":     "b.shape.axis",
+    "sense":    "b.shape.sense",
+    "position": "b.state.pos"
+  },
+
+  "_extra_material_attributes": {
+    "friction_angle_rad":   "float(mat.frictionAngle) if hasattr(mat,'frictionAngle') else 0.0",
+    "label":                "mat.label if mat.label else ''",
+    "material_type":        "type(mat).__name__",
+    "yade_material_type":   "type(mat).__name__"
+  },
+
+  "_extra_interaction_attributes": {
+    "geom_type": "type(i.geom).__name__",
+    "phys_type": "type(i.phys).__name__",
+    "normal_stiffness":               "i.phys.kn  if hasattr(i.phys,'kn')  else 0.0",
+    "shear_stiffness":                "i.phys.ks  if hasattr(i.phys,'ks')  else 0.0",
+    "friction_coefficient_interaction":"i.phys.tangensOfFrictionAngle if hasattr(i.phys,'tangensOfFrictionAngle') else 0.0",
+    "normal_damping_ratio":           "i.phys.betan if hasattr(i.phys,'betan') else float('nan')",
+    "shear_damping_ratio":            "i.phys.betas if hasattr(i.phys,'betas') else float('nan')",
+    "isSliding":                      "int(i.phys.isSliding) if hasattr(i.phys,'isSliding') else 0",
+    "shear_force_elastic":            "i.phys.shearElastic if hasattr(i.phys,'shearElastic') else None",
+    "shear_force_viscous":            "i.phys.shearViscous  if hasattr(i.phys,'shearViscous')  else None",
+    "normal_force_viscous":           "i.phys.normalViscous.norm() if hasattr(i.phys,'normalViscous') else float('nan')"
+  }
+}
