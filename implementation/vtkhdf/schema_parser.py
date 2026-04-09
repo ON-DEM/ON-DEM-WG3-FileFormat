@@ -150,10 +150,16 @@ def _parse_file(filepath: str, module_name: str) -> dict:
                 fname = stmt.target.id
 
                 # Type annotation
-                ftype = ast.unparse(stmt.annotation) if stmt.annotation else "unknown"
+                try:
+                    ftype = ast.unparse(stmt.annotation) if stmt.annotation else "unknown"
+                except AttributeError:
+                    ftype = str(stmt.annotation) if stmt.annotation else "unknown"
 
                 # Default value
-                fdefault = ast.unparse(stmt.value) if stmt.value else "None"
+                try:
+                    fdefault = ast.unparse(stmt.value) if stmt.value else "None"
+                except AttributeError:
+                    fdefault = str(stmt.value) if stmt.value else "None"
 
                 # Look ahead for docstring
                 fdoc = ""
