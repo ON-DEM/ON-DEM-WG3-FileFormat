@@ -79,12 +79,12 @@ def _hdf5_write_expr(field: FieldDef, yade_expr: str, group_var: str,
 
     elif h == "string":
         if scalar_as_dataset:
-            lines.append(f'{group_var}.create_dataset("{n}", data=np.bytes_(str({yade_expr})))')
+            lines.append(f'{group_var}.create_dataset("{n}", data=str({yade_expr}).encode("utf-8"))')
         else:
             lines.append(f'{group_var}.attrs["{n}"] = str({yade_expr})')
 
     elif h == "string_list":
-        lines.append(f'_dt = h5py.special_dtype(vlen=str)')
+        lines.append(f'_dt = h5py.string_dtype()')
         lines.append(f'_ds = {group_var}.create_dataset("{n}", (len({yade_expr}),), dtype=_dt)')
         lines.append(f'for _ii, _v in enumerate({yade_expr}): _ds[_ii] = _v')
 
@@ -237,7 +237,7 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
     _extra_str_fields = {"label", "material_type", "yade_material_type"}
     for fname, expr in extra.items():
         if fname in _extra_str_fields:
-            lines.append(f'        try: g.create_dataset("{fname}", data=np.bytes_(str({expr})))')
+            lines.append(f'        try: g.create_dataset("{fname}", data=str({expr}).encode("utf-8"))')
         else:
             lines.append(f'        try: g.create_dataset("{fname}", data=np.float64({expr}))')
         lines.append(f'        except: pass')
@@ -330,8 +330,9 @@ def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
         "",
         "    # --- Write /VTKHDF/ VTK PolyData structure ---",
         '    vtk = f.require_group("VTKHDF")',
-        '    vtk.attrs.create("Type",    data=np.bytes_("PolyData"))',
-        '    vtk.attrs.create("Version", data=np.array([2, 0], dtype=np.int64))',
+        '    _typeStr = "PolyData".encode("ascii")',
+        '    vtk.attrs.create("Type", _typeStr, dtype=h5py.string_dtype("ascii", len(_typeStr)))',
+        '    vtk.attrs.create("Version", data=np.array([1, 0], dtype=np.int64))',
         "",
         "    # Points = sphere centres",
         "    pos_arr = np.array([[p[0],p[1],p[2]] for p in _position_list], dtype=np.float64)",
@@ -339,14 +340,15 @@ def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
         '    vtk.create_dataset("NumberOfPoints", data=np.array([N], dtype=np.int64))',
         "",
         "    # Empty cell structures (required by VTK HDF spec for PolyData)",
-        '    for _sec in ["Verts","Lines","Polygons","Strips"]:',
+        '    for _sec in ["Vertices","Lines","Polygons","Strips"]:',
         '        _sg = vtk.require_group(_sec)',
         '        _sg.create_dataset("NumberOfCells",           data=np.array([0], dtype=np.int64))',
         '        _sg.create_dataset("NumberOfConnectivityIds", data=np.array([0], dtype=np.int64))',
-        '        _sg.create_dataset("Offsets",                 data=np.array([0], dtype=np.int64))',
-        '        _sg.create_dataset("Connectivity",            data=np.array([], dtype=np.int64))',
+        '        _sg.create_dataset("Offsets",                 data=np.array([0, 0], dtype=np.int64))',
+        '        _sg.create_dataset("Connectivity",            data=np.zeros(0,   dtype=np.int64))',
         "",
         '    pd = vtk.require_group("PointData")',
+        '    pd.attrs["Scalars"] = "radius".encode("ascii")',  # default display hint for ParaView
         "",
         "    # --- Write per-particle datasets ---",
     ]
@@ -500,7 +502,7 @@ def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
     for fname, expr in extra_intr.items():
         h = extra_types.get(fname, "scalar_float")
         if h == "string":
-            lines.append(f'    _dt = h5py.special_dtype(vlen=str)')
+            lines.append(f'    _dt = h5py.string_dtype()')
             lines.append(f'    _ds = ig.create_dataset("{fname}", (len(intrs),), dtype=_dt)')
             lines.append(f'    for _ii, _v in enumerate(_{fname}_list): _ds[_ii] = str(_v) if _v else ""')
         else:
@@ -565,7 +567,7 @@ def _gen_nonsphere_exporter(mapping: dict) -> str:
         "    if others:",
         "        og = grp.require_group('Other')",
         "        og.create_dataset('body_id', data=np.array([b.id for b in others], dtype=np.int32))",
-        "        _dt = h5py.special_dtype(vlen=str)",
+        "        _dt = h5py.string_dtype()",
         "        _ds = og.create_dataset('shape_type', (len(others),), dtype=_dt)",
         "        for _ii, b in enumerate(others): _ds[_ii] = type(b.shape).__name__",
         "        og.attrs['note'] = 'shape type not fully supported by ON-DEM schema yet'",
