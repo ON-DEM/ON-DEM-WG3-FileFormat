@@ -1,0 +1,99 @@
+\documentclass{beamer}
+\usetheme{Madrid}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\title{ON-DEM Model Data Exchange Framework}
+\subtitle{General Design and Programmer's Guide}
+\author{ON-DEM WG3}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Overview}
+  \begin{itemize}
+    \item Generic, extensible, schema-driven framework for DEM simulation data exchange
+    \item Code-agnostic: supports multiple DEM codes (e.g., YADE, MercuryDPM)
+    \item Enables robust data sharing, archiving, and post-processing
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{General Design}
+  \begin{itemize}
+    \item \textbf{Schema-driven}: Python classes define entities and attributes
+    \item \textbf{Type annotations} and docstrings specify units, mandatory/optional
+    \item \textbf{Code generation}: Mapping file links schema to DEM code API
+    \item \textbf{HDF5/VTK HDF}: Data stored in VTK-compatible HDF5 for visualization
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Schema Example}
+\begin{verbatim}
+class state:
+    position: Vector3 = Vector3(0,0,0)
+    """[mandatory] position [$L$]"""
+    velocity: Vector3 = Vector3(0,0,0)
+    """[mandatory] translational velocity [$L T^{-1}$]"""
+\end{verbatim}
+\end{frame}
+
+\begin{frame}[fragile]{Mapping Example}
+\begin{verbatim}
+{
+  "state": {
+    "position": "b.state.pos",
+    "velocity": "b.state.vel"
+  },
+  "sphere": {
+    "radius": "b.shape.radius"
+  }
+}
+\end{verbatim}
+\end{frame}
+
+\begin{frame}{How to Use: Step-by-Step}
+  \begin{enumerate}
+    \item \textbf{Define/extend schema}: Python classes for your entities
+    \item \textbf{Write mapping file}: Link schema fields to your code's API
+    \item \textbf{Generate exporter}: Run codegen with your schema/mapping
+    \item \textbf{Use exporter}: Import and call in your simulation
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}[fragile]{Exporter Usage}
+\begin{verbatim}
+from export_mycode_vtkhdf import export_vtkhdf
+export_vtkhdf("output.vtkhdf")
+\end{verbatim}
+\end{frame}
+
+\begin{frame}{HDF5 Utilities}
+  \begin{itemize}
+    \item \texttt{hdf5\_utils.py}: Read/write all supported field types
+    \item Scalars, vectors, matrices, quaternions, strings, etc.
+    \item Used by all generated exporters/importers
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Best Practices}
+  \begin{itemize}
+    \item Keep schema minimal and physical
+    \item Use mapping to adapt to your code
+    \item Regenerate exporters after schema/mapping changes
+    \item Optional fields only written if present
+    \item Use test cases and Sphinx docs for reference
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{References}
+  \begin{itemize}
+    \item \url{https://github.com/ON-DEM/ON-DEM-WG3-FileFormat}
+    \item \url{https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data}
+  \end{itemize}
+\end{frame}
+
+\end{document}

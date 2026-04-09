@@ -1,0 +1,111 @@
+\documentclass[11pt]{article}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{ON-DEM Model Data Exchange Framework\\
+\vspace{0.5em}
+\large General Design and Programmer's Guide}
+\author{ON-DEM WG3}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+The ON-DEM Model Data Exchange Framework provides a generic, extensible, and schema-driven approach for exchanging Discrete Element Method (DEM) simulation data. It is designed to be code-agnostic, supporting multiple DEM codes (e.g., YADE, MercuryDPM) and enabling robust data sharing, archiving, and post-processing.
+
+\section{General Design}
+
+\subsection{Schema-Driven Structure}
+
+The framework is built around a set of Python schema files that define the physical entities (bodies, interactions, materials, etc.) and their attributes. Each attribute is annotated with type, units, and whether it is mandatory or optional. Example:
+
+\begin{verbatim}
+class state:
+    position: Vector3 = Vector3(0,0,0)
+    """[mandatory] position [$L$]"""
+    velocity: Vector3 = Vector3(0,0,0)
+    """[mandatory] translational velocity [$L T^{-1}$]"""
+    ...
+\end{verbatim}
+
+\subsection{Export/Import Mechanism}
+
+The framework uses code generation to produce exporter/importer scripts tailored to a given DEM code. The generator (\texttt{codegen\_yade.py}) reads the schema and a mapping file (e.g., \texttt{yade\_mapping.json}) that links schema fields to code-specific expressions.
+
+\subsection{HDF5/VTK HDF Format}
+
+Data is stored in HDF5 files, following the VTK HDF PolyData conventions for compatibility with visualization tools (e.g., ParaView). The structure separates data by entity type and shape, and only writes datasets for fields that are present (non-null) in the simulation.
+
+\section{How to Use the Framework for Your Own Code}
+
+\subsection{1. Define or Extend the Schema}
+
+Create or modify Python schema files to describe your simulation entities. Use type annotations and docstrings to specify units and mandatory/optional status.
+
+\begin{verbatim}
+class my_state:
+    position: Vector3 = Vector3(0,0,0)
+    """[mandatory] position [$L$]"""
+    temperature: float = None
+    """[optional] temperature [$\Theta$]"""
+\end{verbatim}
+
+\subsection{2. Write a Mapping File}
+
+Create a JSON mapping file that links each schema field to an expression in your DEM code's API. Example for YADE:
+
+\begin{verbatim}
+{
+  "state": {
+    "position": "b.state.pos",
+    "velocity": "b.state.vel"
+  },
+  "sphere": {
+    "radius": "b.shape.radius"
+  }
+}
+\end{verbatim}
+
+\subsection{3. Generate Exporter/Importer}
+
+Run the code generator to produce an exporter for your code:
+
+\begin{verbatim}
+python codegen_yade.py /path/to/schema --mapping my_mapping.json --out export_mycode_vtkhdf.py
+\end{verbatim}
+
+\subsection{4. Use the Exporter in Your Simulation}
+
+Import and call the generated exporter in your simulation code:
+
+\begin{verbatim}
+from export_mycode_vtkhdf import export_vtkhdf
+export_vtkhdf("output.vtkhdf")
+\end{verbatim}
+
+\subsection{5. HDF5 Utilities}
+
+The framework provides generic utilities (\texttt{hdf5\_utils.py}) for reading and writing all supported field types (scalars, vectors, matrices, quaternions, strings, etc.) to HDF5.
+
+\section{Best Practices}
+
+\begin{itemize}
+    \item Keep schema files minimal and focused on physical meaning, not code-specific details.
+    \item Use the mapping file to adapt the schema to your code's API.
+    \item Regenerate exporters whenever the schema or mapping changes.
+    \item Optional fields are only written if present in the simulation, reducing file size and clutter.
+    \item Use the provided test cases and Sphinx documentation for validation and reference.
+\end{itemize}
+
+\section{References}
+
+\begin{itemize}
+    \item \url{https://github.com/ON-DEM/ON-DEM-WG3-FileFormat}
+    \item \url{https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data}
+\end{itemize}
+
+\end{document}
