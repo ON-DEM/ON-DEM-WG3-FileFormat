@@ -5,10 +5,10 @@ Guarantees sphere-sphere AND sphere-wall interactions at export time.
 Run with:  yadedaily test_export.py
 """
 
+from yade import pack, utils, O, Vector3
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, '.')
 
-from yade import utils, O, Vector3
 from export_yade_vtkhdf_generated import export_vtkhdf
 
 # ---- Material ----

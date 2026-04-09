@@ -1,15 +1,15 @@
 """
-codegen_yade.py
-ON-DEM WG3 - YADE Exporter Code Generator
+codegen_dem.py
+ON-DEM WG3 - DEM Exporter Code Generator
 
-Reads the ON-DEM schema (parsed by schema_parser.py) and the YADE field
-mapping (yade_mapping.json) and emits a complete export_yade_vtkhdf.py.
+Reads the ON-DEM schema (parsed by schema_parser.py) and a DEM field
+mapping (e.g., yade_mapping.json) and emits a complete export_dem_vtkhdf.py.
 
 Usage:
-    python codegen_yade.py <schema_dir> [--mapping yade_mapping.json] [--out export_yade_vtkhdf.py]
+    python codegen_dem.py <schema_dir> [--mapping dem_mapping.json] [--out export_dem_vtkhdf.py]
 
 Example:
-    python codegen_yade.py ./schema --mapping yade_mapping.json --out export_yade_vtkhdf.py
+    python codegen_dem.py ./schema --mapping yade_mapping.json --out export_yade_vtkhdf.py
 """
 
 import json
@@ -31,7 +31,7 @@ def _load_mapping(mapping_path: str) -> dict:
         return json.load(f)
 
 
-def _lookup_mapping(mapping: dict, class_name: str, field_name: str) -> str | None:
+def _lookup_mapping(mapping: dict, class_name: str, field_name: str):
     """Look up the YADE expression for a schema field.
     Precedence: class.field > field fallback.
     Returns None if not found.
@@ -49,63 +49,11 @@ def _lookup_mapping(mapping: dict, class_name: str, field_name: str) -> str | No
 
 
 def _hdf5_write_expr(field: FieldDef, yade_expr: str, group_var: str,
-                     scalar_as_dataset: bool = False) -> list[str]:
-    """Return lines of code to write one field into an HDF5 group.
-
-    scalar_as_dataset=True  -> scalars written as 0-d datasets (Option A, materials)
-    scalar_as_dataset=False -> scalars written as attrs (scene metadata)
-    """
+                     scalar_as_dataset: bool = False) -> str:
+    """Return a code line to write one field using hdf5_utils.hdf5_write_field."""
     n = field.name
     h = field.hdf5_type
-    lines = []
-
-    if h == "scalar_float":
-        if scalar_as_dataset:
-            lines.append(f'{group_var}.create_dataset("{n}", data=np.float64({yade_expr}))')
-        else:
-            lines.append(f'{group_var}.attrs["{n}"] = {yade_expr}')
-
-    elif h in ("scalar_int",):
-        if scalar_as_dataset:
-            lines.append(f'{group_var}.create_dataset("{n}", data=np.int32({yade_expr}))')
-        else:
-            lines.append(f'{group_var}.attrs["{n}"] = {yade_expr}')
-
-    elif h in ("scalar_bool",):
-        if scalar_as_dataset:
-            lines.append(f'{group_var}.create_dataset("{n}", data=np.int8({yade_expr}))')
-        else:
-            lines.append(f'{group_var}.attrs["{n}"] = {yade_expr}')
-
-    elif h == "string":
-        if scalar_as_dataset:
-            lines.append(f'{group_var}.create_dataset("{n}", data=str({yade_expr}).encode("utf-8"))')
-        else:
-            lines.append(f'{group_var}.attrs["{n}"] = str({yade_expr})')
-
-    elif h == "string_list":
-        lines.append(f'_dt = h5py.string_dtype()')
-        lines.append(f'_ds = {group_var}.create_dataset("{n}", (len({yade_expr}),), dtype=_dt)')
-        lines.append(f'for _ii, _v in enumerate({yade_expr}): _ds[_ii] = _v')
-
-    elif h == "vector3":
-        lines.append(f'_v = {yade_expr}')
-        lines.append(f'{group_var}.create_dataset("{n}", data=np.array([_v[0],_v[1],_v[2]], dtype=np.float64))')
-
-    elif h == "quaternion":
-        lines.append(f'_q = {yade_expr}')
-        # YADE quaternion: q[0]=w, q[1]=x, q[2]=y, q[3]=z → store as [x,y,z,w]
-        lines.append(f'{group_var}.create_dataset("{n}", data=np.array([_q[1],_q[2],_q[3],_q[0]], dtype=np.float64))')
-
-    elif h == "matrix3":
-        lines.append(f'_m = {yade_expr}')
-        lines.append(f'_mf = [_m[i][j] for i in range(3) for j in range(3)]')
-        lines.append(f'{group_var}.create_dataset("{n}", data=np.array(_mf, dtype=np.float64))')
-
-    else:
-        lines.append(f'# WARNING: unknown type for field "{n}", skipping')
-
-    return lines
+    return f'hdf5_write_field({group_var}, "{n}", "{h}", {yade_expr}, scalar_as_dataset={scalar_as_dataset})'
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +86,8 @@ import numpy as np
 import h5py
 import os
 import sys
+
+from hdf5_utils import hdf5_write_field, hdf5_write_scalar_array, hdf5_write_vector3_array, hdf5_write_quaternion_array, hdf5_write_matrix3_array, hdf5_write_string_array
 
 '''
 
@@ -197,9 +147,8 @@ def _gen_scene_exporter(schema: Schema, mapping: dict) -> str:
         tag = "[mandatory]" if fld.mandatory else "[optional]" if fld.optional else ""
         lines.append(f"    # {tag} {fld.name}: {fld.type_str} {fld.units}")
 
-        sub_lines = _hdf5_write_expr(fld, expr, "grp")
-        for sl in sub_lines:
-            lines.append("    " + sl)
+        line = _hdf5_write_expr(fld, expr, "grp")
+        lines.append("    " + line)
         lines.append("")
 
     return "\n".join(lines) + "\n"
@@ -259,9 +208,8 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
             tag = "[mandatory]" if fld.mandatory else "[optional]"
             lines.append(f"        # {tag} {fld.name}: {fld.type_str} {fld.units}")
             lines.append(f"        try:")
-            sub_lines = _hdf5_write_expr(fld, expr, "g", scalar_as_dataset=True)
-            for sl in sub_lines:
-                lines.append("            " + sl)
+            line = _hdf5_write_expr(fld, expr, "g", scalar_as_dataset=True)
+            lines.append("            " + line)
             lines.append(f"        except Exception as _e:")
             lines.append(f'            pass  # field not available for this material type')
             lines.append("")
@@ -270,17 +218,20 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
 
 
 def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
-    """Generate _export_spheres writing sphere particles to /VTKHDF/."""
+    """Generate _export_bodies writing bodies separated by shape type to /ONDEM/Bodies/."""
     state_cls  = schema.classes.get("state")
     sphere_cls = schema.classes.get("sphere")
     body_cls   = schema.classes.get("body")
 
-    # Collect all fields we want per sphere
-    # body fields + state fields + sphere shape fields
+    # Shape types to separate
+    shape_types = ['Sphere', 'Box', 'Polyhedron', 'Wall', 'Facet']
+
+    # Collect all fields we want per body
+    # body fields + state fields + shape-specific fields
     all_particle_fields = []
     seen = set()
 
-    for cls_name in ["body", "state", "sphere"]:
+    for cls_name in ["body", "state", "sphere", "box", "polyhedron"]:
         cls = schema.classes.get(cls_name)
         if not cls:
             continue
@@ -292,10 +243,21 @@ def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
 
     # Build collection loop
     lines = [
-        "def _export_spheres(f):",
-        '    """Write sphere particles to /VTKHDF/ PointData — generated from schema."""',
+        "def _export_bodies(f):",
+        '    """Write bodies separated by shape type to /ONDEM/Bodies/ — generated from schema."""',
         "",
-        "    # --- Collect sphere data ---",
+        '    bodies_grp = f.require_group("ONDEM/Bodies")',
+        "",
+        f"    shape_types = {shape_types}",
+        "",
+        "    for shape_type in shape_types:",
+        "        bodies = [b for b in O.bodies if b is not None and type(b.shape).__name__ == shape_type]",
+        "        if not bodies: continue",
+        "",
+        '        bg = bodies_grp.require_group(shape_type)',
+        "        bg.attrs['count'] = len(bodies)",
+        "",
+        "        # --- Collect body data ---",
     ]
 
     # Declare accumulator lists for each field
@@ -303,23 +265,20 @@ def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
         expr = _lookup_mapping(mapping, cls_name, fld.name)
         if not expr:
             continue
-        lines.append(f"    _{fld.name}_list = []")
+        lines.append(f"        _{fld.name}_list = []")
 
     lines += [
         "",
-        "    for b in O.bodies:",
-        "        if b is None: continue",
-        "        if type(b.shape).__name__ != 'Sphere': continue",
+        "        for b in bodies:",
         "",
     ]
 
     for cls_name, fld in all_particle_fields:
         expr = _lookup_mapping(mapping, cls_name, fld.name)
         if not expr:
-            lines.append(f"        # UNMAPPED: {fld.name}")
             continue
-        lines.append(f"        try: _{fld.name}_list.append({expr})")
-        lines.append(f"        except: _{fld.name}_list.append(None)")
+        lines.append(f"            try: _{fld.name}_list.append({expr})")
+        lines.append(f"            except: _{fld.name}_list.append(None)")
 
     lines += [
         "",
@@ -361,24 +320,55 @@ def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
         n = fld.name
         h = fld.hdf5_type
         tag = "[mandatory]" if fld.mandatory else "[optional]"
-        lines.append(f"    # {tag} {n}: {fld.type_str} {fld.units}")
+        lines.append(f"        # {tag} {n}: {fld.type_str} {fld.units}")
 
         if h in ("scalar_float",):
-            lines.append(f'    pd.create_dataset("{n}", data=np.array(_{n}_list, dtype=np.float64))')
+            lines.append(f'        hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.float64)')
         elif h in ("scalar_int",):
-            lines.append(f'    pd.create_dataset("{n}", data=np.array(_{n}_list, dtype=np.int32))')
+            lines.append(f'        hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.int32)')
         elif h in ("scalar_bool",):
-            lines.append(f'    pd.create_dataset("{n}", data=np.array(_{n}_list, dtype=np.int8))')
+            lines.append(f'        hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.int8)')
         elif h == "vector3":
-            lines.append(f'    pd.create_dataset("{n}", data=np.array([[v[0],v[1],v[2]] for v in _{n}_list], dtype=np.float64))')
+            lines.append(f'        hdf5_write_vector3_array(bg, "{n}", _{n}_list)')
         elif h == "quaternion":
-            lines.append(f'    pd.create_dataset("{n}", data=np.array([[q[1],q[2],q[3],q[0]] for q in _{n}_list], dtype=np.float64))')
+            lines.append(f'        hdf5_write_quaternion_array(bg, "{n}", _{n}_list)')
         elif h == "matrix3":
-            lines.append(f'    pd.create_dataset("{n}", data=np.array([_mat3_flat(iv) for iv in _{n}_list], dtype=np.float64))')
+            lines.append(f'        hdf5_write_matrix3_array(bg, "{n}", _{n}_list)')
         else:
-            lines.append(f'    # SKIPPED dataset for {n} (type={h})')
+            lines.append(f'        # SKIPPED dataset for {n} (type={h})')
         lines.append("")
 
+    lines.append("")
+    lines.append("    # --- Unified VTK PolyData for all bodies ---")
+    lines.append("    bodies = [b for b in O.bodies if b is not None]")
+    lines.append("    N = len(bodies)")
+    lines.append("    if N == 0:")
+    lines.append('        print("[export_vtkhdf] Warning: no bodies found")')
+    lines.append("        return 0")
+    lines.append("")
+    lines.append('    vtk = f.require_group("VTKHDF")')
+    lines.append('    vtk.attrs.create("Type",    data=np.bytes_("PolyData"))')
+    lines.append('    vtk.attrs.create("Version", data=np.array([2, 0], dtype=np.int64))')
+    lines.append("")
+    lines.append("    # Points = body centres")
+    lines.append("    positions = [b.state.pos for b in bodies]")
+    lines.append("    hdf5_write_vector3_array(vtk, \"Points\", positions)")
+    lines.append('    vtk.create_dataset("NumberOfPoints", data=np.array([N], dtype=np.int64))')
+    lines.append("")
+    lines.append("    # Empty cell structures (required by VTK HDF spec for PolyData)")
+    lines.append('    for _sec in ["Verts","Lines","Polygons","Strips"]:')
+    lines.append('        _sg = vtk.require_group(_sec)')
+    lines.append('        _sg.create_dataset("NumberOfCells",           data=np.array([0], dtype=np.int64))')
+    lines.append('        _sg.create_dataset("NumberOfConnectivityIds", data=np.array([0], dtype=np.int64))')
+    lines.append('        _sg.create_dataset("Offsets",                 data=np.array([0], dtype=np.int64))')
+    lines.append('        _sg.create_dataset("Connectivity",            data=np.array([], dtype=np.int64))')
+    lines.append("")
+    lines.append('    pd = vtk.require_group("PointData")')
+    lines.append("")
+    lines.append("    # Shape types")
+    lines.append("    shape_types_list = [type(b.shape).__name__ for b in bodies]")
+    lines.append('    hdf5_write_string_array(pd, "shape_type", shape_types_list)')
+    lines.append("")
     lines.append("    return N")
     lines.append("")
 
@@ -386,7 +376,10 @@ def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
 
 
 def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
-    """Generate _export_interactions from interaction schema classes."""
+    """Generate _export_interactions from interaction schema classes, separated by type."""
+
+    # Interaction types to separate
+    intr_types = ['Normal', 'Shear', 'NormalLinear', 'ShearLinear', 'NormalHertz', 'Intr', 'Intr3D']
 
     # Fields to collect from schema interaction classes
     intr_classes = ["intr", "normal", "shear", "shear_linear", "normal_linear", "normal_hertz"]
@@ -408,14 +401,19 @@ def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
 
     lines = [
         "def _export_interactions(f):",
-        '    """Write /ONDEM/Interactions — generated from interaction schema."""',
-        '    ig = f.require_group("ONDEM/Interactions")',
+        '    """Write /ONDEM/Interactions — generated from interaction schema, separated by type."""',
+        '    ig_root = f.require_group("ONDEM/Interactions")',
         "",
-        "    intrs = [i for i in O.interactions if i.isReal]",
-        "    ig.attrs['count'] = len(intrs)",
-        "    if not intrs: return",
+        f"    intr_types = {intr_types}",
         "",
-        "    # --- Accumulate per-interaction data ---",
+        "    for phys_type in intr_types:",
+        "        intrs = [i for i in O.interactions if i.isReal and type(i.phys).__name__ == phys_type]",
+        "        if not intrs: continue",
+        "",
+        '        ig = ig_root.require_group(phys_type)',
+        "        ig.attrs['count'] = len(intrs)",
+        "",
+        "        # --- Accumulate per-interaction data ---",
     ]
 
     # Schema fields
@@ -423,19 +421,19 @@ def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
         expr = _lookup_mapping(mapping, cls_name, fld.name)
         if not expr:
             continue
-        lines.append(f"    _{fld.name}_list = []")
+        lines.append(f"        _{fld.name}_list = []")
 
     # Geometry extras
     for fname in geom_extras:
-        lines.append(f"    _{fname}_list = []")
+        lines.append(f"        _{fname}_list = []")
 
     # Extra attributes
     for fname in extra_intr:
-        lines.append(f"    _{fname}_list = []")
+        lines.append(f"        _{fname}_list = []")
 
     lines += [
         "",
-        "    for i in intrs:",
+        "        for i in intrs:",
         "",
     ]
 
@@ -443,39 +441,41 @@ def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
         expr = _lookup_mapping(mapping, cls_name, fld.name)
         if not expr:
             continue
-        lines.append(f"        try: _{fld.name}_list.append({expr})")
-        lines.append(f"        except: _{fld.name}_list.append(None)")
+        lines.append(f"            try: _{fld.name}_list.append({expr})")
+        lines.append(f"            except: _{fld.name}_list.append(None)")
 
     for fname, expr in geom_extras.items():
-        lines.append(f"        try: _{fname}_list.append({expr})")
-        lines.append(f"        except: _{fname}_list.append(None)")
+        lines.append(f"            try: _{fname}_list.append({expr})")
+        lines.append(f"            except: _{fname}_list.append(None)")
 
     for fname, expr in extra_intr.items():
-        lines.append(f"        try: _{fname}_list.append({expr})")
-        lines.append(f"        except: _{fname}_list.append(None)")
+        lines.append(f"            try: _{fname}_list.append({expr})")
+        lines.append(f"            except: _{fname}_list.append(None)")
 
     lines.append("")
-    lines.append("    # --- Write datasets ---")
+    lines.append("        # --- Write datasets ---")
 
     def _emit_dataset(n, h, lines):
         if h in ("scalar_float",):
-            lines.append(f'    ig.create_dataset("{n}", data=np.array(_{n}_list, dtype=np.float64))')
+            lines.append(f'        hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.float64)')
         elif h in ("scalar_int",):
-            lines.append(f'    ig.create_dataset("{n}", data=np.array(_{n}_list, dtype=np.int32))')
+            lines.append(f'        hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.int32)')
         elif h in ("scalar_bool",):
-            lines.append(f'    ig.create_dataset("{n}", data=np.array(_{n}_list, dtype=np.int8))')
+            lines.append(f'        hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.int8)')
+        elif h == "string":
+            lines.append(f'        hdf5_write_string_array(ig, "{n}", _{n}_list)')
         elif h == "vector3":
-            lines.append(f'    ig.create_dataset("{n}", data=np.array([[v[0],v[1],v[2]] if v is not None else [0,0,0] for v in _{n}_list], dtype=np.float64))')
+            lines.append(f'        hdf5_write_vector3_array(ig, "{n}", _{n}_list)')
         elif h == "quaternion":
-            lines.append(f'    ig.create_dataset("{n}", data=np.array([[q[1],q[2],q[3],q[0]] if q is not None else [0,0,0,1] for q in _{n}_list], dtype=np.float64))')
+            lines.append(f'        hdf5_write_quaternion_array(ig, "{n}", _{n}_list)')
         else:
-            lines.append(f'    # SKIPPED {n} (type={h})')
+            lines.append(f'        # SKIPPED {n} (type={h})')
 
     for cls_name, fld in all_intr_fields:
         expr = _lookup_mapping(mapping, cls_name, fld.name)
         if not expr:
             continue
-        lines.append(f"    # {fld.name}: {fld.type_str} {fld.units}")
+        lines.append(f"        # {fld.name}: {fld.type_str} {fld.units}")
         _emit_dataset(fld.name, fld.hdf5_type, lines)
         lines.append("")
 
@@ -501,13 +501,11 @@ def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
     }
     for fname, expr in extra_intr.items():
         h = extra_types.get(fname, "scalar_float")
-        if h == "string":
-            lines.append(f'    _dt = h5py.string_dtype()')
-            lines.append(f'    _ds = ig.create_dataset("{fname}", (len(intrs),), dtype=_dt)')
-            lines.append(f'    for _ii, _v in enumerate(_{fname}_list): _ds[_ii] = str(_v) if _v else ""')
-        else:
-            _emit_dataset(fname, h, lines)
+        _emit_dataset(fname, h, lines)
         lines.append("")
+
+    lines.append("")
+    lines.append("    return")
 
     return "\n".join(lines) + "\n"
 
@@ -595,8 +593,8 @@ def export_vtkhdf(filename):
     """
     with h5py.File(filename, "w") as f:
 
-        # 1. VTK PolyData for spheres (/VTKHDF/)
-        n_spheres = _export_spheres(f)
+        # 1. VTK PolyData for all bodies (/VTKHDF/)
+        n_bodies = _export_bodies(f)
 
         # 2. Scene metadata
         _export_scene(f)
@@ -618,7 +616,7 @@ def export_vtkhdf(filename):
         f.attrs["mapping_file"]        = "{mapping_path}"
 
     n_intrs = sum(1 for i in O.interactions if i.isReal)
-    print(f"[export_vtkhdf] Exported {{n_spheres}} spheres, {{n_intrs}} interactions "
+    print(f"[export_vtkhdf] Exported {{n_bodies}} bodies, {{n_intrs}} interactions "
           f"at t={{O.time:.6g}} to \\'{{filename}}\\'")
 
 
