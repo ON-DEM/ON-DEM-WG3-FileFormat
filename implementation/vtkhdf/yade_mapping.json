@@ -1,5 +1,5 @@
 {
-  "_comment": "ON-DEM schema field → YADE Python API mapping. Each entry maps a schema field name to how it is accessed in YADE. Keys are 'module.class.field' or 'class.field' or just 'field' (least specific). More specific keys take precedence.",
+  "_comment": "ON-DEM schema field → YADE Python API mapping. Verified against FrictPhys and ScGeom attributes for Law2_ScGeom_FrictPhys_CundallStrack.",
 
   "scene": {
     "time":      "O.time",
@@ -73,12 +73,12 @@
     "id1":      "i.id1",
     "id2":      "i.id2",
     "virtual":  "not i.isReal",
-    "lifespan": "i.phys.lifespan if hasattr(i.phys,'lifespan') else 0.0"
+    "lifespan": "0.0"
   },
 
   "normal": {
     "normal":       "i.geom.normal",
-    "normal_force": "i.phys.normalForce.norm()"
+    "normal_force": "(i.phys.normalForce.norm() * (1.0 if i.phys.normalForce.dot(i.geom.normal) >= 0 else -1.0))"
   },
 
   "shear": {
@@ -90,12 +90,12 @@
   },
 
   "normal_linear": {
-    "ks": "i.phys.kn"
+    "kn": "i.phys.kn"
   },
 
   "normal_hertz": {
-    "hertz_young":   "i.phys.kno",
-    "hertz_poisson": "i.phys.kso"
+    "hertz_young":   "i.phys.young if hasattr(i.phys,'young') else float('nan')",
+    "hertz_poisson": "i.phys.poisson if hasattr(i.phys,'poisson') else float('nan')"
   },
 
   "_interaction_geometry": {
@@ -112,23 +112,16 @@
   },
 
   "_extra_material_attributes": {
-    "friction_angle_rad":   "float(mat.frictionAngle) if hasattr(mat,'frictionAngle') else 0.0",
-    "label":                "mat.label if mat.label else ''",
-    "material_type":        "type(mat).__name__",
-    "yade_material_type":   "type(mat).__name__"
+    "friction_angle_rad": "float(mat.frictionAngle) if hasattr(mat,'frictionAngle') else 0.0",
+    "label":              "mat.label if mat.label else ''",
+    "material_type":      "type(mat).__name__"
   },
 
   "_extra_interaction_attributes": {
-    "geom_type": "type(i.geom).__name__",
-    "phys_type": "type(i.phys).__name__",
-    "normal_stiffness":               "i.phys.kn  if hasattr(i.phys,'kn')  else 0.0",
-    "shear_stiffness":                "i.phys.ks  if hasattr(i.phys,'ks')  else 0.0",
-    "friction_coefficient_interaction":"i.phys.tangensOfFrictionAngle if hasattr(i.phys,'tangensOfFrictionAngle') else 0.0",
-    "normal_damping_ratio":           "i.phys.betan if hasattr(i.phys,'betan') else float('nan')",
-    "shear_damping_ratio":            "i.phys.betas if hasattr(i.phys,'betas') else float('nan')",
-    "isSliding":                      "int(i.phys.isSliding) if hasattr(i.phys,'isSliding') else 0",
-    "shear_force_elastic":            "i.phys.shearElastic if hasattr(i.phys,'shearElastic') else None",
-    "shear_force_viscous":            "i.phys.shearViscous  if hasattr(i.phys,'shearViscous')  else None",
-    "normal_force_viscous":           "i.phys.normalViscous.norm() if hasattr(i.phys,'normalViscous') else float('nan')"
+    "geom_type":                        "type(i.geom).__name__",
+    "phys_type":                        "type(i.phys).__name__",
+    "normal_stiffness":                 "i.phys.kn if hasattr(i.phys,'kn') else float('nan')",
+    "shear_stiffness":                  "i.phys.ks if hasattr(i.phys,'ks') else float('nan')",
+    "friction_coefficient_interaction": "i.phys.tangensOfFrictionAngle if hasattr(i.phys,'tangensOfFrictionAngle') else float('nan')"
   }
 }
