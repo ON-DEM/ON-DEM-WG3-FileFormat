@@ -322,20 +322,27 @@ def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
         tag = "[mandatory]" if fld.mandatory else "[optional]"
         lines.append(f"        # {tag} {n}: {fld.type_str} {fld.units}")
 
-        if h in ("scalar_float",):
-            lines.append(f'        hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.float64)')
-        elif h in ("scalar_int",):
-            lines.append(f'        hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.int32)')
-        elif h in ("scalar_bool",):
-            lines.append(f'        hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.int8)')
-        elif h == "vector3":
-            lines.append(f'        hdf5_write_vector3_array(bg, "{n}", _{n}_list)')
-        elif h == "quaternion":
-            lines.append(f'        hdf5_write_quaternion_array(bg, "{n}", _{n}_list)')
-        elif h == "matrix3":
-            lines.append(f'        hdf5_write_matrix3_array(bg, "{n}", _{n}_list)')
+        # For optional fields, conditionally write only if at least one value exists
+        if not fld.mandatory:
+            lines.append(f"        if any(v is not None for v in _{n}_list):")
+            ind = "            "
         else:
-            lines.append(f'        # SKIPPED dataset for {n} (type={h})')
+            ind = "        "
+
+        if h in ("scalar_float",):
+            lines.append(f'{ind}hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.float64)')
+        elif h in ("scalar_int",):
+            lines.append(f'{ind}hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.int32)')
+        elif h in ("scalar_bool",):
+            lines.append(f'{ind}hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.int8)')
+        elif h == "vector3":
+            lines.append(f'{ind}hdf5_write_vector3_array(bg, "{n}", _{n}_list)')
+        elif h == "quaternion":
+            lines.append(f'{ind}hdf5_write_quaternion_array(bg, "{n}", _{n}_list)')
+        elif h == "matrix3":
+            lines.append(f'{ind}hdf5_write_matrix3_array(bg, "{n}", _{n}_list)')
+        else:
+            lines.append(f'{ind}# SKIPPED dataset for {n} (type={h})')
         lines.append("")
 
     lines.append("")
@@ -455,41 +462,48 @@ def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
     lines.append("")
     lines.append("        # --- Write datasets ---")
 
-    def _emit_dataset(n, h, lines):
+    def _emit_dataset(n, h, lines, indent="        "):
+        """Emit a dataset write with configurable indentation."""
         if h in ("scalar_float",):
-            lines.append(f'        hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.float64)')
+            lines.append(f'{indent}hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.float64)')
         elif h in ("scalar_int",):
-            lines.append(f'        hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.int32)')
+            lines.append(f'{indent}hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.int32)')
         elif h in ("scalar_bool",):
-            lines.append(f'        hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.int8)')
+            lines.append(f'{indent}hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.int8)')
         elif h == "string":
-            lines.append(f'        hdf5_write_string_array(ig, "{n}", _{n}_list)')
+            lines.append(f'{indent}hdf5_write_string_array(ig, "{n}", _{n}_list)')
         elif h == "vector3":
-            lines.append(f'        hdf5_write_vector3_array(ig, "{n}", _{n}_list)')
+            lines.append(f'{indent}hdf5_write_vector3_array(ig, "{n}", _{n}_list)')
         elif h == "quaternion":
-            lines.append(f'        hdf5_write_quaternion_array(ig, "{n}", _{n}_list)')
+            lines.append(f'{indent}hdf5_write_quaternion_array(ig, "{n}", _{n}_list)')
         else:
-            lines.append(f'        # SKIPPED {n} (type={h})')
+            lines.append(f'{indent}# SKIPPED {n} (type={h})')
 
     for cls_name, fld in all_intr_fields:
         expr = _lookup_mapping(mapping, cls_name, fld.name)
         if not expr:
             continue
         lines.append(f"        # {fld.name}: {fld.type_str} {fld.units}")
-        _emit_dataset(fld.name, fld.hdf5_type, lines)
+        # Skip if optional and all None
+        if not fld.mandatory:
+            lines.append(f"        if any(v is not None for v in _{fld.name}_list):")
+            _emit_dataset(fld.name, fld.hdf5_type, lines, indent="            ")
+        else:
+            _emit_dataset(fld.name, fld.hdf5_type, lines)
         lines.append("")
 
-    # Geometry extras (all Vector3 or scalar float)
+    # Geometry extras (all Vector3 or scalar float) — always check presence
     geom_types = {
         "contact_point": "vector3", "overlap": "scalar_float",
         "reference_radius_1": "scalar_float", "reference_radius_2": "scalar_float"
     }
     for fname in geom_extras:
         h = geom_types.get(fname, "scalar_float")
-        _emit_dataset(fname, h, lines)
+        lines.append(f"        if any(v is not None for v in _{fname}_list):")
+        _emit_dataset(fname, h, lines, indent="            ")
         lines.append("")
 
-    # Extra attributes (scalars + vectors)
+    # Extra attributes (scalars + vectors) — check presence
     extra_types = {
         "geom_type": "string", "phys_type": "string",
         "normal_stiffness": "scalar_float", "shear_stiffness": "scalar_float",
@@ -501,7 +515,8 @@ def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
     }
     for fname, expr in extra_intr.items():
         h = extra_types.get(fname, "scalar_float")
-        _emit_dataset(fname, h, lines)
+        lines.append(f"        if any(v is not None for v in _{fname}_list):")
+        _emit_dataset(fname, h, lines, indent="            ")
         lines.append("")
 
     lines.append("")
