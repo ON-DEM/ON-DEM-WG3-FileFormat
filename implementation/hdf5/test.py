@@ -1,4 +1,4 @@
-# An example showing how to integrate and use the Open file format shared library in external C++ code.
+# An example showing how to integrate and use the Open file format shared library in external python code.
 
 # created by Rafal Kobylka 
 # rkobylka@ipan.lublin.pl
