@@ -23,8 +23,10 @@
 
 void read_restart_file(const std::filesystem::directory_entry &f, PARTICLES &p, particle_header &header);
 
-void get_file_list(const char *path, std::vector<std::filesystem::directory_entry> &file_list, std::vector<double> &t_step_list, double t_min=-1e6, double t_max=1e6);
+void get_file_list(const char *path, std::vector<std::filesystem::directory_entry> &file_list, std::vector<double> &t_step_list, double t_min, double t_max);
 
 double extract_timestep(const std::string &filename);
+
+
 
 #endif

@@ -9,7 +9,7 @@
 // or faulty results arising from its use. 
 // Users are advised to employ it at their own risk.
 
-// last modified 04.12.2025
+// last modified 28.04.2026
 
 
 //run with:
@@ -56,8 +56,7 @@
 
 
 
-
-
+#ifdef ENABLE_TIMES
 
 template<typename F, typename... Args>
 std::chrono::milliseconds measure_time(F&& func, Args&&... args)
@@ -81,6 +80,17 @@ void drop_cache_for_file(std::string &filename)
 
     close(fd);
 }
+#else
+template<typename F, typename... Args>
+  std::chrono::milliseconds measure_time(F&& func, Args&&... args)
+  {
+    std::forward<F>(func)(std::forward<Args>(args)...);
+    return std::chrono::milliseconds(0);
+  }
+  void drop_cache_for_file(std::string &filename){}
+
+#endif
+
 
 int main(int argc, char *argv[])
 {
@@ -105,6 +115,10 @@ int main(int argc, char *argv[])
  
   std::string out_dir=std::string(argv[2]);
   
+  
+  
+  
+ 
   std::vector<std::pair<std::chrono::milliseconds, double>> dur_per_thread_read_Blaze(file_list.size());
 //  std::vector<std::pair<std::chrono::milliseconds, double>> dur_per_thread_read_Blaze_raw(file_list.size()); // will print that from elsewhere 
   
@@ -116,10 +130,10 @@ int main(int argc, char *argv[])
   
   std::vector<std::pair<std::chrono::milliseconds, double>> dur_per_thread_read_vtkhdf(file_list.size());
   std::vector<std::pair<std::chrono::milliseconds, double>> dur_per_thread_save_vtkhdf(file_list.size());
-  
-  
-    
+#ifdef ENABLE_TIMES 
   auto start=std::chrono::steady_clock::now();
+#endif
+  
 #ifdef use_omp
   #pragma omp parallel for num_threads(16) //hdf5 doesn't support threads, only MPI 
 #endif
@@ -212,6 +226,8 @@ int main(int argc, char *argv[])
 #endif
   }
 
+  
+#ifdef ENABLE_TIMES   
   auto end=std::chrono::steady_clock::now();
   
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -241,6 +257,7 @@ int main(int argc, char *argv[])
     
   
   std::cout << stats.str() << std::endl;
-
+#endif
+  
   return 0;
 }

@@ -223,8 +223,9 @@ void read_restart_file(const std::filesystem::directory_entry &f, PARTICLES &p, 
     {
       char *buff;
 
+#ifdef ENABLE_TIMES  
       auto start=std::chrono::steady_clock::now();
-  
+#endif  
   
       in.seekg(0, std::ios::end);
       long long file_lenght=in.tellg();
@@ -233,9 +234,11 @@ void read_restart_file(const std::filesystem::directory_entry &f, PARTICLES &p, 
       in.read (buff, file_lenght); // reading full file, can be replaced with mpi_recv at some point
       buff[file_lenght]='\0';
 //       std::cout << file_lenght/1024 << std::endl;
+#ifdef ENABLE_TIMES       
       auto end=std::chrono::steady_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
       std::cout << "Read raw data: " << sizeof(char)*(file_lenght+1)/1024/1024/double(duration.count()/1000.) << " MB/s\n";
+#endif 
       parse_stream_to_particles(buff, p, header); //in main
     }     
   }

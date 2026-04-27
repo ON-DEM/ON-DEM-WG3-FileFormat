@@ -9,9 +9,10 @@
 // or faulty results arising from its use. 
 // Users are advised to employ it at their own risk.
 
-// last modified 20.11.2025
+// last modified 28.04.2026
 
 #include "structs.h"
+#include "wrappers.h"
 
 double3 make_double3(double a, double b, double c)
 {
@@ -143,6 +144,10 @@ void PARTICLES::resize(int n)
     
 }
 
+size_t PARTICLES::get_size() const
+{
+      return 2*n_p*sizeof(int) + 7*n_p*sizeof(double) + 3*n_p*sizeof(double3) + n_p*sizeof(double4);
+}
 
 std::stringstream& operator >> (std::stringstream& in, PARTICLES &p) // ver 3.1
 {
