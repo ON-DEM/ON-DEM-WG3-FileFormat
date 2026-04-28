@@ -32,12 +32,12 @@ jobs:
         run: |
           # Push branches
           for branch in $(git for-each-ref --format='%(refname)' refs/heads/); do
-            git push --force gitlab "$branch"
+            git push gitlab "$branch"
           done
 
           # Push tags
           for tag in $(git for-each-ref --format='%(refname)' refs/tags/); do
-            git push --force gitlab "$tag"
+            git push gitlab "$tag"
           done
 
           # Delete branches removed in GitHub
