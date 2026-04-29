@@ -3,8 +3,9 @@ from base_types import *
 
 class intr:
     """This is generic pair interaction and this is a long comment continuing here"""
-    id1: int = None
     model: str = None
+    """**[mandatory]** which model applies to this interaction"""
+    id1: int = None
     """**[mandatory]** id of body 1"""
     id2: int = None
     """**[mandatory]** id of body 2"""
