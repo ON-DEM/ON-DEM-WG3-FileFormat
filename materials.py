@@ -22,6 +22,15 @@ class material_spring_constants(material_general):
 	shear_stiffness: float = None
 	"""**[mandatory]** shear stiffness, $K_{s}$, [$F L^{-1}$]"""
 
+class material_spring_dashpot_constants(material_spring_constants):
+	"""This material describes linear-elastic behaviour with elasticity parameters"""
+
+	damping_coefficient_normal: float = None
+	"""**[mandatory]** normal damping coefficient, $c_{n}$, [$M T^{-1}$]"""
+	
+	damping_coefficient_shear: float = None
+	"""**[mandatory]** shear damping coefficient, $c_{s}$, [$M T^{-1}$]"""
+
 class material_elastic_constants(material_general):
 	"""This material describes linear-elastic behaviour with elasticity parameters"""
 
@@ -34,15 +43,15 @@ class material_elastic_constants(material_general):
 class material_visco_elastic_constants_COR(material_elastic_constants):
 	"""This material describes visco-elastic behaviour with constant coefficient of restitution"""
 
-	damping_coefficient_normal: float = None
-	"""**[mandatory]** normal damping coefficient, $c_{n}$, [$M T^{-1}$]"""
+	normal_damping_ratio: float = None
+	"""**[mandatory]** normal damping coefficient, $\beta_{n}$, [$-$]"""
 	
-	damping_coefficient_shear: float = None
-	"""**[mandatory]** shear damping coefficient, $c_{s}$, [$M T^{-1}$]"""
+	shear_damping_ratio: float = None
+	"""**[mandatory]** shear damping coefficient, $\beta_{s}$, [$-$]"""
 
 class material_visco_elastic_variable_COR(material_elastic_constants):
 	"""This material describes visco-elastic behaviour with variable coefficient of restitution"""
 
 	dissipative_constant: float = None
-	"""**[mandatory]** dissipative constant, $A$, [$-$]"""
+	"""**[mandatory]** dissipative constant, $A$, [$T$]"""
 
