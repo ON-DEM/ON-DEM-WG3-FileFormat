@@ -23,7 +23,7 @@ class material_spring_constants(material_general):
 	"""**[mandatory]** shear stiffness, $K_{s}$, [$F L^{-1}$]"""
 
 class material_spring_dashpot_constants(material_spring_constants):
-	"""This material describes linear-elastic behaviour with elasticity parameters"""
+	"""This material describes linear viscoelastic behaviour"""
 
 	damping_coefficient_normal: float = None
 	"""**[mandatory]** normal damping coefficient, $c_{n}$, [$M T^{-1}$]"""
@@ -32,7 +32,7 @@ class material_spring_dashpot_constants(material_spring_constants):
 	"""**[mandatory]** shear damping coefficient, $c_{s}$, [$M T^{-1}$]"""
 
 class material_elastic_constants(material_general):
-	"""This material describes linear-elastic behaviour with elasticity parameters"""
+	"""This material describes Hertzian-elastic behaviour with elasticity parameters"""
 
 	young: float = None
 	"""**[mandatory]** young modulus, $E$, [$F L^{-2}$]"""
