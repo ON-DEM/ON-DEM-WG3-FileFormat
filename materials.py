@@ -13,7 +13,7 @@ class material_general:
 	id: int = None
 	"""**[mandatory]** material id, $id$, [$-$]"""
 	
-class material_spring(material_general):
+class material_spring_constants(material_general):
 	"""This material describes linear-elastic behaviour with spring constants"""
 
 	normal_stiffness: float = None
@@ -31,7 +31,7 @@ class material_spring_dashpot(material_spring):
 	shear_viscosity: float = None
 	"""**[mandatory]** shear damping coefficient, $c_{s}$, [$M T^{-1}$]"""
 
-class material_elastic(material_general):
+class material_elastic_constants(material_general):
 	"""This material describes Hertzian-elastic behaviour with elasticity parameters"""
 
 	young: float = None
