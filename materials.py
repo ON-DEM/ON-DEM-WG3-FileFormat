@@ -22,7 +22,7 @@ class material_spring(material_general):
 	shear_stiffness: float = None
 	"""**[mandatory]** shear stiffness, $K_{s}$, [$F L^{-1}$]"""
 
-class material_spring_dashpot(material_spring_constants):
+class material_spring_dashpot(material_spring):
 	"""This material describes linear viscoelastic behaviour"""
 
 	normal_viscosity: float = None
