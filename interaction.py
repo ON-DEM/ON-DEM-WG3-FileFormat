@@ -3,6 +3,8 @@ from base_types import *
 
 class intr:
     """This is generic pair interaction and this is a long comment continuing here"""
+    model: str = None
+    """**[mandatory]** which model applies to this interaction"""
     id1: int = None
     """**[mandatory]** id of body 1"""
     id2: int = None
@@ -32,10 +34,20 @@ class shear_linear(shear):
     ks: float = None
     """**[mandatory]** shear stiffness [$F/L$]"""
 
+class shear_linear_viscoelastic(shear_linear):
+    """linear-elasticity with viscosity"""
+    shear_viscosity: float = None
+    """**[mandatory]** shear damping ratio, $c_{s}$, [$FT/L$]"""
+
 class normal_linear(normal):
     """linear-elasticity"""
     kn: float = None
     """**[mandatory]** normal stiffness [$F/L$]"""
+
+class normal_linear_viscoelastic(normal_linear):
+    """linear-elasticity with viscosity (linear spring dashpot)"""
+    normal_viscosity: float = None
+    """**[mandatory]** normal damping ratio, $c_{n}$,  [$FT/L$]"""
 
 class normal_hertz(normal):
     """Hertzian interaction in the normal direction"""
