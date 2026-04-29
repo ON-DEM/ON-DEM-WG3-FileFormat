@@ -47,8 +47,16 @@ class polyhedron(shape):
     vertices: list = []
     """**[mandatory]** list of positions of the vertices"""
 
+class body_common:
+    """generic data that all bodies can have"""
+    material_id: int = -1
+    """**[mandatory]** material id [$-$]"""
+    clump_id: int = -1
+    """**[mandatory]** clump id [$-$]"""
+    body_id: int = None
+    """**[mandatory]** body id (unique identifier) [$-$]"""
 
-class body:
+class body(body_common, shape, state):
     """class defining a body"""
     material_id: int = -1
     """**[mandatory]** material id [$-$]"""
@@ -56,10 +64,6 @@ class body:
     """**[mandatory]** clump id [$-$]"""
     body_id: int = None
     """**[mandatory]** body id [$-$]"""
-    body_state: type(state) = state()
-    """**[mandatory]** body state [$-$]"""
-    body_shape: type(shape) = shape()
-    """**[mandatory]** body shape [$-$]"""
 
 
 #class body(SomeStateClass,SomeShapeClass,SomeMaterialClass):
