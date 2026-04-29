@@ -40,7 +40,7 @@ class material_elastic(material_general):
 	poisson: float = None
 	"""**[mandatory]** poisson coefficient, $\nu$, [$-$]"""
 
-class material_visco_elastic_constants_COR(material_elastic_constants):
+class material_visco_elastic_constant_COR(material_elastic_constants):
 	"""This material describes visco-elastic behaviour with constant coefficient of restitution"""
 
 	normal_damping_ratio: float = None
