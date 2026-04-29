@@ -52,6 +52,6 @@ class material_visco_elastic_constants_COR(material_elastic_constants):
 class material_visco_elastic_variable_COR(material_elastic_constants):
 	"""This material describes visco-elastic behaviour with variable coefficient of restitution"""
 
-	dissipative_constant: float = None
-	"""**[mandatory]** dissipative constant, $A$, [$T$]"""
+	relaxation_time: float = None
+	"""**[mandatory]** relaxation time, $A$, [$T$]"""
 
