@@ -32,22 +32,22 @@ class intr3D(normal, shear):
 class shear_linear(shear):
     """linear-elasticity"""
     ks: float = None
-    """**[mandatory]** shear stiffness [$ F/L $]"""
+    """**[mandatory]** shear stiffness [$F/L$]"""
 
 class shear_linear_viscoelastic(shear_linear):
     """linear-elasticity with viscosity"""
-    shear_damping_ratio: float = None
-    """**[mandatory]** shear damping ratio, $\beta_{s}$, [$ FT / L $]"""
+    shear_viscosity: float = None
+    """**[mandatory]** shear damping ratio, $c_{s}$, [$FT/L$]"""
 
 class normal_linear(normal):
     """linear-elasticity"""
     kn: float = None
-    """**[mandatory]** normal stiffness [$ F/L $]"""
+    """**[mandatory]** normal stiffness [$F/L$]"""
 
 class normal_linear_viscoelastic(normal_linear):
     """linear-elasticity with viscosity (linear spring dashpot)"""
-    normal_damping_ratio: float = None
-    """**[mandatory]** normal damping ratio, $\beta_{n}$,  [$ FT / L $]"""
+    normal_viscosity: float = None
+    """**[mandatory]** normal damping ratio, $c_{n}$,  [$FT/L$]"""
 
 class normal_hertz(normal):
     """Hertzian interaction in the normal direction"""
