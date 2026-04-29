@@ -25,10 +25,10 @@ class material_spring(material_general):
 class material_spring_dashpot(material_spring_constants):
 	"""This material describes linear viscoelastic behaviour"""
 
-	damping_coefficient_normal: float = None
+	normal_viscosity: float = None
 	"""**[mandatory]** normal damping coefficient, $c_{n}$, [$M T^{-1}$]"""
 	
-	damping_coefficient_shear: float = None
+	shear_viscosity: float = None
 	"""**[mandatory]** shear damping coefficient, $c_{s}$, [$M T^{-1}$]"""
 
 class material_elastic(material_general):
