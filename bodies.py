@@ -1,4 +1,5 @@
 from base_types import *
+from materials import material
 
 class state:
     """mechanical state of a body"""
@@ -47,8 +48,7 @@ class polyhedron(shape):
     vertices: list = []
     """**[mandatory]** list of positions of the vertices"""
 
-
-class body:
+class body(state,shape,material):
     """class defining a body"""
     material_id: int = -1
     """**[mandatory]** material id [$-$]"""
@@ -56,10 +56,6 @@ class body:
     """**[mandatory]** clump id [$-$]"""
     body_id: int = None
     """**[mandatory]** body id [$-$]"""
-    body_state: type(state) = state()
-    """**[mandatory]** body state [$-$]"""
-    body_shape: type(shape) = shape()
-    """**[mandatory]** body shape [$-$]"""
 
 
 #class body(SomeStateClass,SomeShapeClass,SomeMaterialClass):

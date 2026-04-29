@@ -1,19 +1,16 @@
 from base_types import *
 
-
-class material_general:
-	"""These are shared material variables for all materials"""
-	
-	density: float = None
-	"""**[mandatory]** material density - particle density, $\rho$, [$M L^{-3}$]"""
-	
-	friction_coefficient: float = None
-	"""**[mandatory]** material friction coefficient, $\mu$, [$-$]"""
-	
+class material:
+	"""Generic material class"""
 	id: int = None
 	"""**[mandatory]** material id, $id$, [$-$]"""
-	
-class material_spring_constants(material_general):
+	density: float = 0
+	"""**[mandatory]** material density - particle density, $\rho$, [$M L^{-3}$]"""
+
+class material_elastic(material):
+	"""Elastic material to specialize by spring constants or elastic constants"""
+
+class material_spring_constants(material_elastic):
 	"""This material describes linear-elastic behaviour with spring constants"""
 
 	normal_stiffness: float = None
@@ -22,7 +19,7 @@ class material_spring_constants(material_general):
 	shear_stiffness: float = None
 	"""**[mandatory]** shear stiffness, $K_{s}$, [$F L^{-1}$]"""
 
-class material_elastic_constants(material_general):
+class material_elastic_constants(material_elastic):
 	"""This material describes linear-elastic behaviour with elasticity parameters"""
 
 	young: float = None
@@ -31,7 +28,12 @@ class material_elastic_constants(material_general):
 	poisson: float = None
 	"""**[mandatory]** poisson coefficient, $\nu$, [$-$]"""
 
-class material_visco_elastic_constants_COR(material_elastic_constants):
+class material_frictional(material_elastic):
+	"""Elastic-frictional material"""	
+	friction_coefficient: float = None
+	"""**[mandatory]** material friction coefficient, $\mu$, [$-$]"""
+
+class material_visco_elastic_constants_COR(material_frictional):
 	"""This material describes visco-elastic behaviour with constant coefficient of restitution"""
 
 	damping_coefficient_normal: float = None
@@ -40,7 +42,7 @@ class material_visco_elastic_constants_COR(material_elastic_constants):
 	damping_coefficient_shear: float = None
 	"""**[mandatory]** shear damping coefficient, $c_{s}$, [$M T^{-1}$]"""
 
-class material_visco_elastic_variable_COR(material_elastic_constants):
+class material_visco_elastic_variable_COR(material_frictional):
 	"""This material describes visco-elastic behaviour with variable coefficient of restitution"""
 
 	dissipative_constant: float = None
