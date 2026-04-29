@@ -37,6 +37,11 @@ class normal_linear(normal):
     kn: float = None
     """**[mandatory]** normal stiffness [$F/L$]"""
 
+class normal_linear_viscoelastic(normal_linear):
+    """linear-elasticity with viscosity (linear spring dashpot)"""
+    normal_damping_ratio: float = None
+    """**[mandatory]** normal damping ratio, $\beta_{n}$,  [$F T / L$]"""
+
 class normal_hertz(normal):
     """Hertzian interaction in the normal direction"""
     hertz_young: float = None
