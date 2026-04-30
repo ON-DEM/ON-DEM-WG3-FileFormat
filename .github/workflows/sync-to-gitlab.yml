@@ -48,7 +48,7 @@ jobs:
           done
 
   check-gitlab:
-    needs
+    needs: mirror
     runs-on: ubuntu-latest
     steps:
       - name: Get GitLab pipeline status
