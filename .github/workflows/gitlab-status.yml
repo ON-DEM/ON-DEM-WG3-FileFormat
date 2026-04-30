@@ -1,0 +1,28 @@
+name: Check GitLab CI Status
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  check-gitlab:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitLab pipeline status
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_READ_API }}
+          GITLAB_PROJECT_ID: <27200>
+          GITLAB_REF: ${{ github.sha }}
+        run: |
+          if [ -z "$GITLAB_TOKEN" ]; then
+            AUTH_HEADER=""
+          else
+            AUTH_HEADER="--header 'PRIVATE-TOKEN: $GITLAB_TOKEN'"
+          fi
+          STATUS=$(eval curl --silent $AUTH_HEADER \
+            "https://gricad-gitlab.univ-grenoble-alpes.fr/api/v4/projects/$GITLAB_PROJECT_ID/pipelines?sha=$GITLAB_REF" | jq -r '.[0].status')
+          echo "GitLab pipeline status: $STATUS"
+          if [ "$STATUS" != "success" ]; then
+            echo "GitLab pipeline failed or is not finished."
+            exit 1
+          fi
