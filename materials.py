@@ -44,10 +44,10 @@ class material_visco_elastic_constant_COR(material_elastic_constants):
 	"""This material describes visco-elastic behaviour with constant coefficient of restitution"""
 
 	normal_damping_ratio: float = None
-	"""**[mandatory]** normal damping coefficient, $\beta_{n}$, [$-$]"""
+	"""**[mandatory]** normal"""
 	
 	shear_damping_ratio: float = None
-	"""**[mandatory]** shear damping coefficient, $\beta_{s}$, [$-$]"""
+	"""**[mandatory]** shear """
 
 class material_visco_elastic_variable_COR(material_elastic_constants):
 	"""This material describes visco-elastic behaviour with variable coefficient of restitution"""
