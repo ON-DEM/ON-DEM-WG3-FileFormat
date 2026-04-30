@@ -19,10 +19,15 @@ jobs:
           else
             AUTH_HEADER="--header 'PRIVATE-TOKEN: $GITLAB_TOKEN'"
           fi
-          STATUS=$(eval curl --silent $AUTH_HEADER \
-            "https://gricad-gitlab.univ-grenoble-alpes.fr/api/v4/projects/$GITLAB_PROJECT_ID/pipelines?sha=$GITLAB_REF" | jq -r '.[0].status')
+          PIPELINE_JSON=$(eval curl --silent $AUTH_HEADER \
+            "https://gricad-gitlab.univ-grenoble-alpes.fr/api/v4/projects/$GITLAB_PROJECT_ID/pipelines?sha=$GITLAB_REF")
+          STATUS=$(echo "$PIPELINE_JSON" | jq -r '.[0].status')
+          PIPELINE_ID=$(echo "$PIPELINE_JSON" | jq -r '.[0].id')
+          PIPELINE_URL="https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID"
           echo "GitLab pipeline status: $STATUS"
-          if [ "$STATUS" != "success" ]; then
-            echo "GitLab pipeline failed or is not finished."
+          if [ "$STATUS" = "success" ]; then
+            echo "::notice::GitLab pipeline succeeded! ($PIPELINE_URL)"
+          else
+            echo "::error::GitLab pipeline failed or is not finished. See details: $PIPELINE_URL"
             exit 1
           fi
