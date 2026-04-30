@@ -47,7 +47,7 @@ jobs:
             fi
           done
 
-    check-gitlab:
+  check-gitlab:
     runs-on: ubuntu-latest
     steps:
       - name: Get GitLab pipeline status
