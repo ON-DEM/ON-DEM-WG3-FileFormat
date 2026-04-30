@@ -11,7 +11,7 @@ jobs:
       - name: Get GitLab pipeline status
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_READ_API }}
-          GITLAB_PROJECT_ID: <27200>
+          GITLAB_PROJECT_ID: 27200
           GITLAB_REF: ${{ github.sha }}
         run: |
           if [ -z "$GITLAB_TOKEN" ]; then
