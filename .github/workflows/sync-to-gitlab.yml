@@ -1,9 +1,7 @@
-name: Mirror to GitLab
+name: GitLab Integration
 
 on:
   push:
-    branches: ['**']
-    tags: ['**']
   delete:
     branches: ['**']
     tags: ['**']
@@ -12,9 +10,9 @@ on:
   workflow_dispatch:
 
 jobs:
+  
   mirror:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,5 +43,61 @@ jobs:
             remote_branch="${branch#refs/heads/}"
             if ! git show-ref --verify --quiet "refs/heads/$remote_branch"; then
               git push gitlab ":refs/heads/$remote_branch"
+            fi
+          done
+
+  check-gitlab:
+    needs: mirror
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get GitLab pipeline status
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_READ_API }}
+          GITLAB_PROJECT_ID: 27200
+          GITLAB_REF: ${{ github.sha }}
+        run: |
+          if [ -z "$GITLAB_TOKEN" ]; then
+            AUTH_HEADER=""
+          else
+            AUTH_HEADER="--header 'PRIVATE-TOKEN: $GITLAB_TOKEN'"
+          fi
+          TIMEOUT=300
+          INTERVAL=10
+          ELAPSED=0
+
+          while true; do
+            PIPELINE_JSON=$(curl --silent $AUTH_HEADER \
+              "https://gricad-gitlab.univ-grenoble-alpes.fr/api/v4/projects/$GITLAB_PROJECT_ID/pipelines?sha=$GITLAB_REF")
+            PIPELINE_ID=$(echo "$PIPELINE_JSON" | jq -r '.[0].id')
+            STATUS=$(echo "$PIPELINE_JSON" | jq -r '.[0].status')
+
+            if [ "$PIPELINE_ID" = "null" ] || [ -z "$PIPELINE_ID" ]; then
+              if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+                echo "::error::No GitLab pipeline found for this commit after waiting. Giving up."
+                exit 1
+              fi
+              echo "No pipeline found yet, waiting..."
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+              continue
+            fi
+
+            if [ "$STATUS" = "success" ]; then
+              echo "::notice::GitLab pipeline succeeded! (https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID)"
+              exit 0
+            elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "canceled" ]; then
+              echo "::error::GitLab pipeline failed or was canceled. See details: https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID"
+              exit 1
+            elif [ "$STATUS" = "running" ] || [ "$STATUS" = "pending" ]; then
+              if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+                echo "::error::Timeout waiting for GitLab pipeline to finish. See details: https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID"
+                exit 1
+              fi
+              echo "Pipeline is $STATUS, waiting..."
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+            else
+              echo "::error::Unknown pipeline status: $STATUS. See details: https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID"
+              exit 1
             fi
           done
