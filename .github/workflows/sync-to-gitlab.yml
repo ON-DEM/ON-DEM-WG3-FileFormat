@@ -1,7 +1,6 @@
 name: GitLab Integration
 
 on:
-  pull_request:
   push:
   delete:
     branches: ['**']
