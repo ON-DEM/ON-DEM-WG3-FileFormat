@@ -82,11 +82,20 @@ jobs:
               continue
             fi
 
+            # Fetch the jobs for the pipeline and get the job ID for the 'build' job
+            JOB_JSON=$(curl --silent $AUTH_HEADER \
+              "https://gricad-gitlab.univ-grenoble-alpes.fr/api/v4/projects/$GITLAB_PROJECT_ID/pipelines/$PIPELINE_ID/jobs")
+            BUILD_JOB_ID=$(echo "$JOB_JSON" | jq -r '.[] | select(.name=="build") | .id' | head -n1)
+            ARTIFACT_URL=""
+            if [ -n "$BUILD_JOB_ID" ] && [ "$BUILD_JOB_ID" != "null" ]; then
+              ARTIFACT_URL=" Artifacts: https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/jobs/$BUILD_JOB_ID/artifacts/browse/sphinx/build/"
+            fi
+
             if [ "$STATUS" = "success" ]; then
-              echo "::notice::GitLab pipeline succeeded! (https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID)"
+              echo "::notice::GitLab pipeline succeeded! (https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID), inspect output in the artifacts: $ARTIFACT_URL"
               exit 0
             elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "canceled" ]; then
-              echo "::error::GitLab pipeline failed or was canceled. See details: https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID"
+              echo "::error::GitLab pipeline failed or was canceled. See details: https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines/$PIPELINE_ID, and output (if any) at: $ARTIFACT_URL"
               exit 1
             elif [ "$STATUS" = "running" ] || [ "$STATUS" = "pending" ]; then
               if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
