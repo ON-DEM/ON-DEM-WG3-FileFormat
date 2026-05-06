@@ -18,6 +18,26 @@ sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('../build/py'))
 
 
+def patch_automodsumm_warnings():
+    from sphinx_automodapi.automodsumm import Automodsumm
+
+    if getattr(Automodsumm, '_ondem_warnings_patch', False):
+        return
+
+    original_init = Automodsumm.__init__
+
+    def patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        if not hasattr(self, 'warnings'):
+            self.warnings = []
+
+    Automodsumm.__init__ = patched_init
+    Automodsumm._ondem_warnings_patch = True
+
+
+patch_automodsumm_warnings()
+
+
 # -- Project information -----------------------------------------------------
 
 project = 'ON-DEM Open Format'
@@ -60,7 +80,7 @@ autodoc_default_options = {
     'undoc-members': 'False',
     'show-inheritance': 'False',
     'inherited-members': 'False',
-    'exclude-members': '__weakref__, SomeStateClass'
+    'exclude-members': '__weakref__'
 }
 
 autodoc_member_order = 'bysource'
