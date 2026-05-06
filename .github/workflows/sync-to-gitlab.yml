@@ -1,4 +1,4 @@
-name: GitLab Integration
+name: Build documentation
 
 on:
   push:
@@ -46,7 +46,7 @@ jobs:
             fi
           done
 
-  check-gitlab:
+  build-doc:
     needs: mirror
     runs-on: ubuntu-latest
     steps:
