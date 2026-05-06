@@ -1,36 +1,56 @@
-/* Expand content width for better readability */
+/* Responsive content width for agogo theme */
 
-body {
-    margin: 0;
-    padding: 20px;
-}
-
-div.document {
+/* agogo fixes the page to 70em; make it fluid */
+div.header,
+div.content,
+div.footer {
     width: auto;
+    max-width: none;
+    margin-left: 20px;
+    margin-right: 20px;
 }
 
-div.documentwrapper {
+/* Keep left sidebar (rightsidebar is false in conf.py) */
+div.sidebar {
     float: left;
-    width: calc(100% - 270px);
+    width: 240px;
+    margin-right: 20px;
 }
 
-div.bodywrapper {
-    margin: 0;
+/* Fill remaining horizontal space with the main document */
+div.document {
+    float: left;
+    width: calc(100% - 260px);
+    min-width: 0;
 }
 
+/* Remove extra left indent and fixed-width feel */
 div.body {
+    padding-left: 0;
     max-width: none;
 }
 
-div.sphinxsidebar {
-    float: right;
-    width: 250px;
-    margin-left: 20px;
+/* Keep long content from forcing overflow */
+table,
+img,
+.graphviz,
+div.highlight {
+    max-width: 100%;
 }
 
-/* Clearfix */
-div.document::after {
-    content: "";
-    display: table;
-    clear: both;
+/* Mobile fallback: stack sidebar and content */
+@media (max-width: 900px) {
+    div.header,
+    div.content,
+    div.footer {
+        margin-left: 10px;
+        margin-right: 10px;
+    }
+
+    div.sidebar,
+    div.document {
+        float: none;
+        width: 100%;
+        margin: 0;
+    }
 }
