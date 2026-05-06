@@ -11,7 +11,6 @@ This page displays all inherited members for each data type. To get back to norm
    :no-main-docstr:
    :no-heading:
    :skip: Vector3, Matrix3, Quaternion
-   :no-inheritance-diagram:
 
 Detailed contents
 *****************

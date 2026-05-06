@@ -1,0 +1,36 @@
+/* Expand content width for better readability */
+
+body {
+    margin: 0;
+    padding: 20px;
+}
+
+div.document {
+    width: auto;
+}
+
+div.documentwrapper {
+    float: left;
+    width: calc(100% - 270px);
+}
+
+div.bodywrapper {
+    margin: 0;
+}
+
+div.body {
+    max-width: none;
+}
+
+div.sphinxsidebar {
+    float: right;
+    width: 250px;
+    margin-left: 20px;
+}
+
+/* Clearfix */
+div.document::after {
+    content: "";
+    display: table;
+    clear: both;
+}

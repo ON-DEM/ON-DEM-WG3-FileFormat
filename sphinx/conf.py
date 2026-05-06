@@ -143,6 +143,9 @@ html_theme = 'alabaster'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
+# Include custom CSS to expand content width
+html_css_files = ['custom.css']
+
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
 #
