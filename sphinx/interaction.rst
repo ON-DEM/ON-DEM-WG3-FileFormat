@@ -6,13 +6,13 @@ This page displays only attributes added at a certain inheritance level. For see
 .. automodapi:: interaction
    :no-main-docstr:
    :no-heading:
-   :skip: SomeStateClass, SomeMaterialClass, SomeShapeClass, Vector3, Matrix3, Quaternion
+   :skip: Vector3, Matrix3, Quaternion
 
 Detailed content
 ----------------
    
-.. automodapi:: interaction
-   :no-heading:
-   :no-inheritance-diagram:
-   :skip: Vector3, Matrix3, Quaternion
+.. automodule:: interaction
+   :members:
+   :undoc-members:
+   :noindex:
 

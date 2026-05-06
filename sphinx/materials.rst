@@ -15,7 +15,7 @@ This page displays only attributes added at a certain inheritance level. For see
 Detailed content
 ----------------
    
-.. automodapi:: materials
-   :no-heading:
-   :no-inheritance-diagram:
-   :skip: Vector3, Matrix3, Quaternion
+.. automodule:: materials
+   :members:
+   :undoc-members:
+   :noindex:

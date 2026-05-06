@@ -79,7 +79,6 @@ autodoc_default_options = {
     'member-order': 'bysource',
     'undoc-members': False,
     'show-inheritance': False,
-    'inherited-members': False,
     'exclude-members': '__weakref__'
 }
 
