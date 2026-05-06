@@ -34,11 +34,34 @@ make latexpdf
 ```
 The output is in ```sphinx/build```
 
+### in case of issues with the sphinx version
 
-Alternatively, run the docker image from registry directly:
+1. run the docker image from registry directly:
 ```
 docker run -it gricad-registry.univ-grenoble-alpes.fr/on-dem/model-data:main
 ```
+Then reproduce the steps above.
+
+2. Or, use a virtual environment with the same sphinx version
+
+```
+python3 -m venv .venv-docs
+source .venv-docs/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements-docs.txt
+```
+
+Then build with:
+
+```
+cd sphinx
+source ../.venv-docs/bin/activate
+make html
+make latexpdf
+```
+
+Note: `.venv-docs/` is ignored by git and should not be committed.
+
 
 ## Remote build:
 

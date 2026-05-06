@@ -75,11 +75,11 @@ extensions = [
 
 # Autodoc configuration
 autodoc_default_options = {
-    'members': 'True',
+    'members': True,
     'member-order': 'bysource',
-    'undoc-members': 'False',
-    'show-inheritance': 'False',
-    'inherited-members': 'False',
+    'undoc-members': False,
+    'show-inheritance': False,
+    'inherited-members': False,
     'exclude-members': '__weakref__'
 }
 

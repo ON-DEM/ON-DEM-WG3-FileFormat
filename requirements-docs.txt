@@ -1,0 +1,3 @@
+Sphinx==4.3.2
+sphinx-automodapi==0.20.0
+sphinxcontrib-bibtex==2.6.3
