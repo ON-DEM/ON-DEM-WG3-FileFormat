@@ -6,6 +6,7 @@ __pycache__/
 *.egg
 dist/
 build/
+sphinx/build/
 .eggs/
 *.whl
 *.so
