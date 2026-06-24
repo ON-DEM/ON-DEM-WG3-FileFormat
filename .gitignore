@@ -6,7 +6,6 @@ __pycache__/
 *.egg
 dist/
 build/
-sphinx/build/
 .eggs/
 *.whl
 *.so
@@ -19,3 +18,7 @@ sphinx/build/
 
 # macOS
 .DS_Store
+
+# sphinx
+sphinx/build/
+sphinx/api
