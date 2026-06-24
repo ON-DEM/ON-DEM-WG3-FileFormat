@@ -2,56 +2,91 @@ from base_types import *
 
 
 class material_general:
-	"""These are shared material variables for all materials"""
-	
-	density: float = None
-	"""**[mandatory]** material density - particle density, $\rho$, [$ML^{-3}$]"""
-	
-	friction_coefficient: float = None
-	"""**[mandatory]** material friction coefficient, $\mu$, [$-$]"""
-	
+	"""General properties shared by all materials"""
+
 	id: int = None
 	"""**[mandatory]** material id, $id$, [$-$]"""
-	
-class material_spring_constants(material_general):
-	"""This material describes linear-elastic behaviour with spring constants"""
+
+	name: str = None
+	"""*[optional]* material name"""
+
+	density: float = None
+	"""**[mandatory]** particle density, $\\rho$, [$ML^{-3}$]"""
+
+
+class linear_elastic:
+	"""Linear-elastic behaviour"""
+
+	model: str = "linear_elastic"
+	"""elastic model"""
 
 	normal_stiffness: float = None
-	"""**[mandatory]** normal stiffness, $K_{n}$, [$FL^{-1}$]"""
-	
+	"""**[mandatory]** normal stiffness, $K_n$, [$FL^{-1}$]"""
+
 	shear_stiffness: float = None
-	"""**[mandatory]** shear stiffness, $K_{s}$, [$FL^{-1}$]"""
+	"""**[mandatory]** shear stiffness, $K_s$, [$FL^{-1}$]"""
 
-class material_spring_dashpot(material_spring_constants):
-	"""This material describes linear viscoelastic behaviour"""
 
-	normal_viscosity: float = None
-	"""**[mandatory]** normal damping coefficient, $c_{n}$, [$MT^{-1}$]"""
-	
-	shear_viscosity: float = None
-	"""**[mandatory]** shear damping coefficient, $c_{s}$, [$MT^{-1}$]"""
+class hertz_elastic:
+	"""Hertzian-elastic behaviour"""
 
-class material_elastic_constants(material_general):
-	"""This material describes Hertzian-elastic behaviour with elasticity parameters"""
+	model: str = "hertz_elastic"
+	"""elastic model"""
 
-	young: float = None
-	"""**[mandatory]** young modulus, $E$, [$FL^{-2}$]"""
-	
-	poisson: float = None
-	"""**[mandatory]** poisson coefficient, $\nu$, [$-$]"""
+	young_modulus: float = None
+	"""**[mandatory]** Young's modulus, $E$, [$FL^{-2}$]"""
 
-class material_visco_elastic_constant_COR(material_elastic_constants):
-	"""This material describes visco-elastic behaviour with constant coefficient of restitution"""
+	poisson_ratio: float = None
+	"""**[mandatory]** Poisson's ratio, $\\nu$, [$-$]"""
 
-	normal_damping_ratio: float = None
-	"""**[mandatory]** normal damping coefficient, $\\beta_n$  [$-$]"""
-	
-	shear_damping_ratio: float = None
-	"""**[mandatory]** shear damping coefficient, $\\beta_s$ [$-$]"""
 
-class material_visco_elastic_variable_COR(material_elastic_constants):
-	"""This material describes visco-elastic behaviour with variable coefficient of restitution"""
+class visco_elastic:
+	"""Visco-elastic damping behaviour"""
 
-	relaxation_time: float = None
-	"""**[mandatory]** relaxation time, $A$, [$T$]"""
+	model: str = "visco_elastic"
+	"""damping model"""
 
+	normal_damping: float = None
+	"""**[mandatory]** normal damping coefficient, $c_n$, [$MT^{-1}$]"""
+
+	shear_damping: float = None
+	"""**[mandatory]** shear damping coefficient, $c_s$, [$MT^{-1}$]"""
+
+
+class frictional_3d:
+	"""Sliding-friction behaviour"""
+
+	model: str = "frictional_3d"
+	"""friction model"""
+
+	sliding_friction: float = None
+	"""**[mandatory]** sliding-friction coefficient, $\\mu_s$, [$-$]"""
+
+
+class frictional_6d(frictional_3d):
+	"""Sliding, rolling and torsional friction behaviour"""
+
+	model: str = "frictional_6d"
+	"""friction model"""
+
+	rolling_friction: float = None
+	"""**[mandatory]** rolling-friction coefficient, $\\mu_r$, [$-$]"""
+
+	torsion_friction: float = None
+	"""**[mandatory]** torsional-friction coefficient, $\\mu_t$, [$-$]"""
+
+
+class material:
+	"""Complete material definition"""
+
+	general: material_general = None
+	"""**[mandatory]** general material properties"""
+
+	elastic: object = None
+	"""**[mandatory]** elastic behaviour (linear_elastic or hertz_elastic or linear)"""
+
+	damping: object = None
+	"""*[optional]* damping behaviour (visco_elastic)"""
+
+	friction: object = None
+	"""*[optional]* frictional behaviour (frictional_3d or frictional_6d)"""
