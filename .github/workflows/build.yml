@@ -1,0 +1,66 @@
+name: Build documentation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive texlive-latex-extra latexmk graphviz
+
+      - name: Install Python dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Build HTML docs
+        working-directory: sphinx
+        run: make html
+
+      - name: Build PDF docs
+        working-directory: sphinx
+        run: make latexpdf
+
+      - name: Prepare Pages artifact
+        run: |
+          mkdir -p public
+          mv sphinx/build/html public/
+          cp sphinx/build/latex/*.pdf public/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: |
+            sphinx/build/html
+            sphinx/build/latex/*.pdf
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
