@@ -58,8 +58,7 @@ jobs:
 
       - name: Prepare Pages artifact
         run: |
-          mkdir -p public
-          mv sphinx/build/html public/
+          mv sphinx/build/html public
           cp sphinx/build/latex/*.pdf public/
 
       - name: Upload Pages artifact
