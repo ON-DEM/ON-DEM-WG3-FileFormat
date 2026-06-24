@@ -10,9 +10,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Grant write-all to the entire workflow
-permissions: write-all
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -71,7 +68,6 @@ jobs:
           path: public
 
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     permissions:
