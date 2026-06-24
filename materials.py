@@ -59,25 +59,25 @@ class material_liquid_bridge(material_general):
 	"""This material describes a liquid bridge model"""
 
 	surfaceTension_: float = None
-	"""**[mandatory]** surface tension of the liquid [$F/L$]"""
+	"""**[mandatory]** surface tension of the liquid, $\\gamma$ [$F/L$]"""
 
 	contactAngle_: float = None
-	"""**[mandatory]** contact angle between particle and liquid bridge surface [$-$]"""
+	"""**[mandatory]** contact angle between particle and liquid bridge surface, $\\Theta$ [$-$]"""
 
 class material_liquid_bridge_migration(material_liquid_bridge):
 	"""This material describes a liquid bridge migration model"""
 
 	liquid_bridge_volume_min: float = None
-	"""**[mandatory]** the minimum liquid volume needed to form a bridge [$L^3$]"""
+	"""**[mandatory]** the minimum liquid volume needed to form a bridge, $V_\\mathrm{min}$ [$L^3$]"""
 
 	liquid_bridge_volume_max: float = None
-	"""**[mandatory]** the maximum liquid volume, a liquid bridge gets during formation [$L^3$]"""
+	"""**[mandatory]** the maximum liquid volume, a liquid bridge gets during formation, $V_\\mathrm{max}$ [$L^3$]"""
 
 	distribution_coefficient: float = None
-	"""**[mandatory]** the fraction of the liquid that is to be distributed to the neighboring contacts of the particles after a liquid bridge rupture [$-$]"""
+	"""**[mandatory]** the fraction of the liquid that is to be distributed to the neighboring contacts of the particles after a liquid bridge rupture, $f$ [$-$]"""
 
 class material_liquid_bridge_static(material_liquid_bridge):
 	"This material describes a liquid bridge model, where every contact has the same liquid volume"
 
 	liquid_bridge_volume: float = None
-	"""**[mandatory]** the liquid volume of a bridge [$L^3$]"""
+	"""**[mandatory]** the liquid volume of a bridge, $V$ [$L^3$]"""
