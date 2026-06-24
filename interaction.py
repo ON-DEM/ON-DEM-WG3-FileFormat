@@ -67,7 +67,4 @@ class linear_frictional_3D(linear_3D):
     """**[mandatory]** friction coefficient, $\mu$, [$-$]"""
     pass
 
-class exotic(normal_hertz, shear_linear):
-    """This is an arbitrary combination "à la" MercuryDPM"""
-    pass
 
