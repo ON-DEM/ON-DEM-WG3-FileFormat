@@ -71,3 +71,15 @@ Note: `.venv-docs/` is ignored by git and should not be committed.
  - Click "commit"
  
  The new html/pdf should appear in the [job artifacts](https://gricad-gitlab.univ-grenoble-alpes.fr/on-dem/model-data/-/pipelines) after ~30sec. After a commit to master branch it may need a few minutes for the update to be reflected in [the public pages](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data).
+
+## Contributing
+
+### Adding a model
+1. Select a model you wish to add to the OPEN File Format.
+2. Figure out which variables are needed for the interactions: Most likely, some of the variables are already defined somewhere.
+3. Explore the file existing format specifications, check: [Materials data](./materials.py), [Interaction data](./interaction.py) and [Interaction models](./model.py).
+4. Check the "VARIABLES" tab on [this spreadsheet](https://docs.google.com/spreadsheets/d/1UALlIVtaxdMpy1aX-9HdBKr23dg9fmQPuUDZsQNo8TI/edit?gid=0#gid=0). If the variables of your model are already included, then use the variable name(s), and symbols decided. If not there, make a proposal following the agreed rules (snake_case, LaTeX format for symbols and quantities).
+5. In Github: create a new branch with your addition (following the steps below) and create a merge request after you finish adding things (don’t push directly to the main branch).
+6. Look at [interaction.py](./interaction.py): Check if your model can inherit from existing models, some variables might need to be included both in [interaction.py](./interaction.py) to insure code interoperability.
+7. Add the necessary data to [materials.py](./materials.py), check if your material can inherit from existing materials. Some variables might need to be included both in [materials.py](./materials.py) to insure code interoperability. If you need to add variables using the names and symbols decided/proposed.
+8. Add model description to [model.py](./model.py).
