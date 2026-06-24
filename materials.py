@@ -55,3 +55,15 @@ class material_visco_elastic_variable_COR(material_elastic_constants):
 	relaxation_time: float = None
 	"""**[mandatory]** relaxation time, $A$, [$T$]"""
 
+class material_basic_luding(material_spring_constants):
+	"""This material describes linear-elastic behaviour with spring constants"""
+
+	normal_stiffness_plastic: float = None
+	"""**[mandatory]** normal stiffness in plastic branch, $K_{1}$, [$FL^{-1}$]"""
+
+	normal_stiffness_unloading_reloading: float = None
+	"""**[mandatory]** normal stiffness in unloading and reloading elastic branch, $K_{n}^{U}$, [$FL^{-1}$]"""
+	
+	normal_stiffness_tensile: float = None
+	"""**[mandatory]** normal stiffness in tensile adhesive branch, $K_{adh}^{U}$, [$FL^{-1}$]"""
+
