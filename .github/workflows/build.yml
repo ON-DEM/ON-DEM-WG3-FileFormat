@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Grant write-all to the entire workflow
+permissions: write-all
+
 jobs:
   build:
     runs-on: ubuntu-latest
