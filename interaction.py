@@ -11,8 +11,8 @@ class intr:
     """**[mandatory]** id of body 2"""
     virtual: bool = False
     """*[optional]* weither the interaction is real (else it is in a virtual state - typically without contact)"""
-    lifespan: float = 0
-    """*[optional]* time since the interaction was created (example of optional data)"""
+    creation_time: float = 0
+    """*[optional]* time when the interaction was created (example of optional data)"""
 
 class normal(intr):
     """interaction in the normal direction"""
