@@ -1,1 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+*.so
 .venv-docs/
+.venv
+.pytest_cache/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# macOS
+.DS_Store
