@@ -23,6 +23,8 @@ class periodic_walls:
  
 	distance_right: float = 0
 	"""**[mandatory]** the distance of the wall from the origin in the direction of the normal"""
+
+	implementations: list = ['MercuryDPM']
 	
 class insertion:
 	"""Defines the general variables needed for all insertion boundaries"""
