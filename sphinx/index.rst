@@ -28,6 +28,7 @@ Physical quantities are assigned to many variables, not units. The actual system
    materials_full
    interaction_full
    model
+   imposed_conditions
    bibliography
    
 .. .. toctree::
