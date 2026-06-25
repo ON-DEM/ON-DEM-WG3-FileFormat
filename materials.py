@@ -104,11 +104,14 @@ class material_liquid_bridge_static(material_liquid_bridge):
 	liquid_bridge_volume: float = None
 	"""**[mandatory]** the liquid volume of a bridge, $V$ [$L^3$]"""
 
-class material_linear_elastic(material_general, linear_elastic):
-	"""General material with linear elastic contact forces"""
+class material_linear_elastic_frictional_3D(material_general, linear_elastic, frictional_3d):
+	"""General material with linear elastic frictional contact forces"""
 	pass
 class material_linear_visco_elastic_frictional_3d(material_general, linear_visco_elastic, frictional_3d):
 	"""General material with linear visco-elastic frictional_3d contact forces"""
+	pass
+class material_linear_elastic_frictional_6D(material_general, linear_visco_elastic, frictional_6d):
+	"""General material with linear elastic frictional_6d contact forces"""
 	pass
 
 class material_liquid_bridge_linear_visco_elastic_frictional_3d(material_liquid_bridge, linear_visco_elastic, frictional_3d):

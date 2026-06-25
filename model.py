@@ -1,6 +1,6 @@
 from base_types import *
 
-class elastic_frictional_3D:
+class linear_elastic_frictional_3D:
     """
     Cundall's contact model with linear elasticity and Coulombian friction \cite{Cundall1979}; $F_n=k_n u_n$, $\Delta F_s=k_s \dot u_s\, \Delta t$.
     """
@@ -14,9 +14,17 @@ class linear_viscoelastic_frictional_3D(elastic_frictional_3D):
     implementations: list = ['MercuryDPM', 'YADE']
     """codes implementing this model"""
 
-class elastic_frictional_6D(elastic_frictional_3D):
+class linear_elastic_frictional_6D(elastic_frictional_3D):
     """
     Generalized elastic-frictional model with rolling and twisting.
     """
-    implementations: list = ['YADE', '...']
+    implementations: list = ['YADE', 'MercuryDPM']
     """codes implementing this model"""
+
+class liquid_bridge_linear_visco_elastic_frictional_3d(material_liquid_bridge, linear_visco_elastic, frictional_3d):
+    """
+    Elastic-frictional model with viscous damping, rolling, twisting, and liquid bridges
+    """
+    implementations: list = ['YADE', 'MercuryDPM']
+    """codes implementing this model"""
+    pass
