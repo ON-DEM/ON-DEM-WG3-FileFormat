@@ -17,10 +17,10 @@ class stress_control_boundary:
     """Defines a boundary or set of boundaries that may include stress/strain servo-control algorithms"""
 
     boundary_id: int = None
-    """**[mandatory]** identifies the boundary to be controlled, [$-$]"""
+    """**[mandatory]** identifies the boundary to be controlled, $b_{id}$, [$-$]"""
 
     boundary_activate: bool = None
-    """**[mandatory]** if True, this boundary moves according to the target value (stress or strain rate)., [$-$]"""
+    """**[mandatory]** if True, this boundary moves according to the target value (stress or strain rate), $A$ [$-$]"""
     
     goal: float = None
     """**[mandatory]** defines the desired/required stress, $\sigma_{req}$  , [$FL^{-2}$]"""
@@ -35,16 +35,16 @@ class stress_control_boundary:
     """**[mandatory]** defines the current strain rate allowed for stress/strain control, $\dot{\epsilon}_{curr}$. This required for re-start files, [$T^{-1}$]"""	
 
     bit_mask: int = None
-    """**[mandatory]** determines whether the imposed goal values are stresses (0) or strains (1). Different values for boundary pairs (or sets), [$-$]"""
+    """**[mandatory]** determines whether the imposed goal values are stresses (0) or strains (1). Different values for boundary pairs (or sets), $b$, [$-$]"""
 
     tolerance: float = None
-    """**[optional]** if servo-control is used for stress, a tolerance for comparison may be provided, [$-$]"""
+    """**[optional]** if servo-control is used for stress, a tolerance for comparison may be provided, $\sigma_{tol}$, [$-$]"""
 
     gain: float = None
-    """**[optional]** if servo-control is used for stress, a gain parameter (or more) may be provide to modify strain rates, [$-$]"""
+    """**[optional]** if servo-control is used for stress, a gain parameter (or more) may be provide to modify strain rates, $g$, [$-$]"""
 
     interval: int = None
-    """**[optional]** if servo-control is used for stress, an iteration interval may be used to verify stress and/or strain rates, [$-$]"""
+    """**[optional]** if servo-control is used for stress, an iteration interval may be used to verify stress and/or strain rates, $\Delta_{check}$, [$-$]"""
 
     implementations: list = ['YADE','LAMMPS']
     
