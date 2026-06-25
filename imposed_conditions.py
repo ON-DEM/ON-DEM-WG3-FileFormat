@@ -57,7 +57,7 @@ class cube_insertion(insertion):
 	"""Defines a cuboid shaped insertion region"""
 
 	extent: Vector3
-	"""**[mandatory]** the dimension of the box in the unrotated frame. The box spans from position-extent/2 to position+extent/2, [$L\\,L\\,L$]"""
+	"""**[mandatory]** the dimension of the box in the unrotated frame. The box spans from position-extent/2 to position+extent/2, [$L,\\,L,\\,L$]"""
  
 class cube_deletion:
 	"""Defines a cuboid shaped deletion region. All particles entering this region will be deleted"""
@@ -69,7 +69,7 @@ class cube_deletion:
 	"""**[mandatory]** the orientation of the deletion region"""
 
 	extent: Vector3
-	"""**[mandatory]** the dimension of the box in the unrotated frame. The box spans from position-extent/2 to position+extent/2, [$L\\,L\\,L$]"""
+	"""**[mandatory]** the dimension of the box in the unrotated frame. The box spans from position-extent/2 to position+extent/2, [$L,\\,L,\\,L$]"""
 
 class stress_control_boundary:
     """Defines a boundary or set of boundaries that may include stress/strain servo-control algorithms"""
