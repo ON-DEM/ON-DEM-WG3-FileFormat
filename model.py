@@ -23,7 +23,7 @@ class elastic_frictional_6D(elastic_frictional_3D):
 
 class thermal_base(material_elastic_constants):
 	"""This material describes thermal behaviour"""
-    implementations: list = ['...']
+    implementations: list = []
     """codes implementing this model"""
 
 class thermal_Blaze(termal_base):
