@@ -7,21 +7,21 @@ class linear_elastic_frictional_3D:
     implementations: list = ['MercuryDPM', 'YADE']
     """codes implementing this model"""
 
-class linear_viscoelastic_frictional_3D(elastic_frictional_3D):
+class linear_viscoelastic_frictional_3D(linear_elastic_frictional_3D):
     """
     Elastic-frictional model with viscous damping
     """
     implementations: list = ['MercuryDPM', 'YADE']
     """codes implementing this model"""
 
-class linear_elastic_frictional_6D(elastic_frictional_3D):
+class linear_elastic_frictional_6D(linear_elastic_frictional_3D):
     """
     Generalized elastic-frictional model with rolling and twisting.
     """
     implementations: list = ['YADE', 'MercuryDPM']
     """codes implementing this model"""
 
-class liquid_bridge_linear_visco_elastic_frictional_3d(material_liquid_bridge, linear_visco_elastic, frictional_3d):
+class liquid_bridge_linear_visco_elastic_frictional_3d(linear_viscoelastic_frictional_3D):
     """
     Elastic-frictional model with viscous damping, rolling, twisting, and liquid bridges
     """
