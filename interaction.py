@@ -11,8 +11,8 @@ class intr:
     """**[mandatory]** id of body 2"""
     virtual: bool = False
     """*[optional]* weither the interaction is real (else it is in a virtual state - typically without contact)"""
-    lifespan: float = 0
-    """*[optional]* time since the interaction was created (example of optional data)"""
+    creation_time: float = 0
+    """*[optional]* time when the interaction was created (example of optional data)"""
 
 class normal(intr):
     """interaction in the normal direction"""
@@ -71,7 +71,15 @@ class thermal_Blaze(material_elastic_constants):
 	"""This material describes thermal behaviour dependent on friction and cohesion"""
     pass
 
-class exotic(normal_hertz, shear_linear):
-    """This is an arbitrary combination "à la" MercuryDPM"""
-    pass
+class liquid_bridge(intr):
+    """interaction to store base information needed for liquid bridges"""
+    
+    is_formed: bool = None
+    """**[mandatory]** whether a liquid bridge was formed previously"""
+    
+class liquid_bridge_dynamic(liquid_bridge):
+    """liquid bridge interaction, where the volume can change"""
+    
+    liquid_bridge_volume: float = None
+    """**[mandatory]** the liquid volume stored in the bridge, $V$ [$L^3$]"""
 
