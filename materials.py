@@ -38,7 +38,7 @@ class elastic_constants(base_material):
     """**[mandatory]** young modulus, $E$, [$FL^{-2}$]"""
     
     poisson: float = None
-    """**[mandatory]** poisson coefficient, $\nu$, [$-$]"""
+    """**[mandatory]** poisson coefficient, $\\nu$, [$-$]"""
 
 class visco_elastic_constant_COR(elastic_constants):
     """This material describes visco-elastic behaviour with constant coefficient of restitution"""
