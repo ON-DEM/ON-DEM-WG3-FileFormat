@@ -56,9 +56,9 @@ class base_body:
     """**[mandatory]** clump id [$-$]"""
     body_id: int = None
     """**[mandatory]** body id [$-$]"""
-    body_state: type[base_state] = base_state()
+    body_state: type(base_state) = base_state()
     """**[mandatory]** body state [$-$]"""
-    body_shape: type[base_shape] = base_shape()
+    body_shape: type(base_shape) = base_shape()
     """**[mandatory]** body shape [$-$]"""
 
 
