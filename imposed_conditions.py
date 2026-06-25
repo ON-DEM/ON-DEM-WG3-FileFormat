@@ -26,6 +26,12 @@ class periodic_walls:
 	
 class insertion:
 	"""Defines the general variables needed for all insertion boundaries"""
+	
+	position: Vector3
+	"""**[mandatory]** the position of the insertion region"""
+ 
+	orientation: Quaternion
+	"""**[mandatory]** the orientation of the insertion region"""
  
 	initial_volume: float
 	"""**[mandatory]** volume of particles that get's inserted initially, $V$, [$L^3$]"""
@@ -48,18 +54,18 @@ class insertion:
 class cube_insertion(insertion):
 	"""Defines a cuboid shaped insertion region"""
 
-	pos_min: Vector3
-	"""**[mandatory]** the first corner of the defined region, [$L\\,L\\,L$]"""
-	
-	pos_max: Vector3
-	"""**[mandatory]** the second corner of the defined region (pos_min < pos_max in all components), [$L\\,L\\,L$]"""
+	extent: Vector3
+	"""**[mandatory]** the dimension of the box in the unrotated frame. The position is defined at it's center, [$L\\,L\\,L$]"""
  
 class cube_deletion:
 	"""Defines a cuboid shaped deletion region. All particles entering this region will be deleted"""
-
-	pos_min: Vector3
-	"""**[mandatory]** the first corner of the defined region, [$L\\,L\\,L$]"""
 	
-	pos_max: Vector3
-	"""**[mandatory]** the second corner of the defined region (pos_min < pos_max in all components), [$L\\,L\\,L$]"""
+	position: Vector3
+	"""**[mandatory]** the position of the deletion region"""
+ 
+	orientation: Quaternion
+	"""**[mandatory]** the orientation of the deletion region"""
+
+	extent: Vector3
+	"""**[mandatory]** the dimension of the box in the unrotated frame. The position is defined at it's center, [$L\\,L\\,L$]"""
 
