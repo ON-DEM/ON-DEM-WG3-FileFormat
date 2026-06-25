@@ -1,4 +1,4 @@
-name: Build documentation and publish
+name: GitHub - Build documentation and publish
 
 on:
   push:
