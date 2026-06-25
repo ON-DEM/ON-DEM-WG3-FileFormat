@@ -5,7 +5,7 @@ class periodic_box:
     """Defines 3D-periodic space and its deformation rate"""
     
     shape: Matrix3 = Matrix3.identity
-    """**[mandatory]** defines the shape of the periodic pattern, $H$  , [$L$]"""
+    """**[mandatory]** defines the shape of the periodic pattern, $H$, [$L$]"""
     
     velocity_gradient: Matrix3 = Matrix3.zero
     """**[mandatory]** velocity gradient, $D$, [$L$]"""
@@ -81,10 +81,10 @@ class stress_control_boundary:
     """**[mandatory]** if True, this boundary moves according to the target value (stress or strain rate), $A$ [$-$]"""
     
     goal: float = None
-    """**[mandatory]** defines the desired/required stress, $\sigma_{req}$  , [$FL^{-2}$]"""
+    """**[mandatory]** defines the desired/required stress, $\sigma_{req}$, [$FL^{-2}$]"""
 
     current_stress: float = None
-    """**[mandatory]** defines the current/measured stress, $\sigma_{curr}$  , [$FL^{-2}$]"""
+    """**[mandatory]** defines the current/measured stress, $\sigma_{curr}$, [$FL^{-2}$]"""
 
     max_strain_rate: float = None
     """**[mandatory]** defines the maximum strain rate allowed for stress/strain control, $\dot{\epsilon}$, [$T^{-1}$]"""
