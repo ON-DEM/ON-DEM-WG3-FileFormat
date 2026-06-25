@@ -5,7 +5,7 @@ class base_material:
     """These are shared material variables for all materials"""
     
     density: float = None
-    """**[mandatory]** material density - particle density, $\rho$, [$ML^{-3}$]"""
+    """**[mandatory]** material density - particle density, $\\rho$, [$ML^{-3}$]"""
     
     friction_coefficient: float = None
     """**[mandatory]** material friction coefficient, $\\mu$, [$-$]"""
@@ -38,7 +38,7 @@ class elastic_constants(base_material):
     """**[mandatory]** young modulus, $E$, [$FL^{-2}$]"""
     
     poisson: float = None
-    """**[mandatory]** poisson coefficient, $\nu$, [$-$]"""
+    """**[mandatory]** poisson coefficient, $\\nu$, [$-$]"""
 
 class visco_elastic_constant_COR(elastic_constants):
     """This material describes visco-elastic behaviour with constant coefficient of restitution"""
@@ -58,21 +58,21 @@ class visco_elastic_variable_COR(elastic_constants):
 class base_thermal(elastic_constants):
     """This material describes thermal behaviour"""
     thermal_conduction: float = None
-    """**[mandatory]** thermal conduction of the material, $c_v$, [$E/(L*\theta)$]"""
+    """**[mandatory]** thermal conduction of the material, $c_v$, [$E/(L*\\theta)$]"""
     thermal_capacity: float = None
-    """**[mandatory]** thermal capacity of the material, $c_p$, [$E/\theta$]"""
+    """**[mandatory]** thermal capacity of the material, $c_p$, [$E/\\theta$]"""
     initial_themperature: float = None
-    """**[mandatory]** initial temperature the material, $T_0$, [$\theta$]"""
+    """**[mandatory]** initial temperature the material, $T_0$, [$\\theta$]"""
     min_temp: float = None
-    """**[optional]** min temperature limit of the material,  $T_{min}$, [$\theta$]"""
+    """**[optional]** min temperature limit of the material,  $T_{min}$, [$\\theta$]"""
     max_temp: float = None
-    """**[optional]** max temperature limit of the material,  $T_{max}$, [$\theta$]"""
+    """**[optional]** max temperature limit of the material,  $T_{max}$, [$\\theta$]"""
 
-class thermal_Blaze(base_thermal):
+class thermal_blaze(base_thermal):
     """This material describes thermal behaviour dependent on friction and cohesion"""
 
     friction_source: float = None
-    """**[mandatory]** friction value used for heat generation, $\mu_{\theta}$, [$-$]"""
+    """**[mandatory]** friction value used for heat generation, $\mu_{\\theta}$, [$-$]"""
     contact_area_effective: float = None
     """**[mandatory]** \% of contact area, $A_{eff}$, [$-$]"""
     cohesion_rate: float = None
