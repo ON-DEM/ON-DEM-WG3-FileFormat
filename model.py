@@ -18,7 +18,7 @@ class elastic_frictional_6D(elastic_frictional_3D):
     """
     Generalized elastic-frictional model with rolling and twisting.
     """
-    implementations: list = ['YADE', '...']
+    implementations: list = ['YADE']
     """codes implementing this model"""
 
 class base_thermal:
@@ -34,5 +34,5 @@ class linear_basic_luding_3D(elastic_frictional_3D):
     """
     Basic Luding model with spring constants for plastic loading, unload/reload and tensile adhesion .
     """
-    implementations: list = ['YADE', '...']
+    implementations: list = ['YADE']
     """codes implementing this model"""
