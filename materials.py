@@ -69,13 +69,13 @@ class thermal_Blaze(material_elastic_constants):
     contact_area_effective: float = None
     """**[mandatory]** \% of contact area, $A_{eff}$, [$-$]"""
     cohesion_rate: float = None
-    """**[mandatory]** cohesion rate, ${SE_rate}$, [$E/(L^2*T)$]"""
+    """**[mandatory]** cohesion rate, ${SE_{rate}}$, [$E/(L^2*T)$]"""
     min_temp: float = None
     """**[optional]** min temperature limit of the material,  $T_{min}$, [$\theta$]"""
     max_temp: float = None
     """**[optional]** max temperature limit of the material,  $T_{max}$, [$\theta$]"""
     cohesion_limit: float = None
-    """**[optional]** max surface energy value, ${SE_max}$, [$E/L^2$]"""
+    """**[optional]** max surface energy value, ${SE_{max}}$, [$E/L^2$]"""
     thickness: float = None
     """**[optional]** artificial thickness for geometry, $\delta\ d$, [$L$]"""
     
