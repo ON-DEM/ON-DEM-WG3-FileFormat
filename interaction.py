@@ -67,7 +67,11 @@ class linear_frictional_3D(linear_3D):
     """**[mandatory]** friction coefficient, $\mu$, [$-$]"""
     pass
 
-class thermal_Blaze(material_elastic_constants):
+class thermal_base(material_elastic_constants):
+	"""This material describes thermal behaviour dependent on friction and cohesion"""
+    pass
+
+class thermal_Blaze(thermal_base):
 	"""This material describes thermal behaviour dependent on friction and cohesion"""
     pass
 
