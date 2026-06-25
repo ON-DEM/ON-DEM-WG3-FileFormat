@@ -56,7 +56,7 @@ class material_visco_elastic_variable_COR(material_elastic_constants):
 	"""**[mandatory]** relaxation time, $A$, [$T$]"""
 
 class material_thermal_base(material_elastic_constants);
-    """This material describes thermal behaviour dependent on friction and cohesion"""
+    """This material describes thermal behaviour"""
     thermal_conduction: float = None
     """**[mandatory]** thermal conduction of the material, $c_v$, [$E/(L*\theta)$]"""
     thermal_capacity: float = None
