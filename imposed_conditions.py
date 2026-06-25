@@ -2,7 +2,7 @@ from base_types import *
 
 
 class periodic_cell:
-	"""Defines 3D-periodic space and its deformation"""
+	"""Defines 3D-periodic space and its deformation rate"""
 	
 	shape: Matrix3 = Matrix3.identity
 	"""**[mandatory]** defines the shape of the periodic pattern, $H$  , [$L$]"""
