@@ -22,14 +22,25 @@ For debian distributions, the prerequisites (also visible [here](https://gricad-
 apt-get install python3 python3-sphinx python3-sphinx-automodapi python3-sphinxcontrib.bibtex texlive texlive-latex-extra latexmk graphviz
 ```
 
-Then:
-
+Clone this repository and move to the folder `sphinx`:
 ```
 git clone https://github.com/ON-DEM/ON-DEM-WG3-FileFormat.git
 cd sphinx
+```
+
+Then, build the documentation:
+
+In unix (Linux, MacOS):
+```bash
 make html
 make latexpdf
 ```
+
+or in windows:
+```
+python -m sphinx -b html . build
+```
+
 The output is in ```sphinx/build```
 
 ### in case of issues with the sphinx version
