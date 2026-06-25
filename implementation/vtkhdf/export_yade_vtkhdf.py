@@ -92,7 +92,7 @@ def _export_materials(f):
         try: g.create_dataset("yade_material_type", data=np.bytes_(str(type(mat).__name__)))
         except: pass
 
-        # --- material_general: These are shared material variables for all materials ---
+        # --- base_material: These are shared material variables for all materials ---
         # [mandatory] density: <_ast.Name object at 0x7fda0a409160> [$M L^{-3}$]
         try:
             hdf5_write_field(g, "density", "unknown", mat.density, scalar_as_dataset=True)
@@ -111,7 +111,7 @@ def _export_materials(f):
         except Exception as _e:
             pass  # field not available for this material type
 
-        # --- material_spring_constants: This material describes linear-elastic behaviour with spring constants ---
+        # --- spring_constants: This material describes linear-elastic behaviour with spring constants ---
         # [mandatory] normal_stiffness: <_ast.Name object at 0x7fda0a409cd0> [$F L^{-1}$]
         try:
             hdf5_write_field(g, "normal_stiffness", "unknown", mat.kn, scalar_as_dataset=True)
@@ -124,7 +124,7 @@ def _export_materials(f):
         except Exception as _e:
             pass  # field not available for this material type
 
-        # --- material_elastic_constants: This material describes linear-elastic behaviour with elasticity parameters ---
+        # --- elastic_constants: This material describes linear-elastic behaviour with elasticity parameters ---
         # [mandatory] young: <_ast.Name object at 0x7fda0a409df0> [$F L^{-2}$]
         try:
             hdf5_write_field(g, "young", "unknown", mat.young, scalar_as_dataset=True)
@@ -137,7 +137,7 @@ def _export_materials(f):
         except Exception as _e:
             pass  # field not available for this material type
 
-        # --- material_visco_elastic_constants_COR: This material describes visco-elastic behaviour with constant coefficient of restitution ---
+        # --- visco_elastic_constants_COR: This material describes visco-elastic behaviour with constant coefficient of restitution ---
         # [mandatory] damping_coefficient_normal: <_ast.Name object at 0x7fda0a405d00> [$M T^{-1}$]
         try:
             hdf5_write_field(g, "damping_coefficient_normal", "unknown", mat.cn, scalar_as_dataset=True)
@@ -150,7 +150,7 @@ def _export_materials(f):
         except Exception as _e:
             pass  # field not available for this material type
 
-        # --- material_visco_elastic_variable_COR: This material describes visco-elastic behaviour with variable coefficient of restitution ---
+        # --- visco_elastic_variable_COR: This material describes visco-elastic behaviour with variable coefficient of restitution ---
         # [mandatory] dissipative_constant: <_ast.Name object at 0x7fda0a405d90> [$-$]
         try:
             hdf5_write_field(g, "dissipative_constant", "unknown", mat.alpha, scalar_as_dataset=True)

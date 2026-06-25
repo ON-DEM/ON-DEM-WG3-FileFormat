@@ -158,11 +158,11 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
     """Generate _export_materials collecting all material_* classes."""
     # Find all material classes in order of inheritance
     mat_classes = [
-        "material_general",
-        "material_spring_constants",
-        "material_elastic_constants",
-        "material_visco_elastic_constants_COR",
-        "material_visco_elastic_variable_COR",
+        "base_material",
+        "spring_constants",
+        "elastic_constants",
+        "visco_elastic_constants_COR",
+        "visco_elastic_variable_COR",
     ]
     # Only keep those that exist in schema
     mat_classes = [c for c in mat_classes if c in schema.classes]

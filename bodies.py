@@ -1,6 +1,6 @@
 from base_types import *
 
-class state:
+class base_state:
     """mechanical state of a body"""
     position: Vector3 = Vector3(0,0,0)
     """**[mandatory]** position [$L$]"""
@@ -17,38 +17,38 @@ class state:
     volume: float = None
     """**[mandatory]** volume [$L^{3}$]"""
 
-class thermal_state(state):
+class thermal(base_state):
     """mechanical + thermal state"""
     temperature: float = None
     """*[optional]* temperature [$\Theta$]"""
 
-class liquid_film(state):
+class liquid_film(base_state):
     """mechanical + liquid film state"""
     liquid_film_volume: float = None
     """*[optional]* liquid film volume [L^3]"""
 
-class shape:
+class base_shape:
     """shape of a body"""
     color: Vector3 = Vector3(1,1,1)
     """*[optional]* RGB color values [$-$]"""
 
-class sphere(shape):
+class sphere(base_shape):
     """sphere"""
     radius: float = None
     """**[mandatory]** radius"""
 
-class box(shape):
+class box(base_shape):
     """cuboid"""
     dimensions: Vector3 = Vector3(0,0,0)
     """**[mandatory]** length in each direction of space"""
 
-class polyhedron(shape):
+class polyhedron(base_shape):
     """A generic polyhedron"""
     vertices: list = []
     """**[mandatory]** list of positions of the vertices"""
 
 
-class body:
+class base_body:
     """class defining a body"""
     material_id: int = -1
     """**[mandatory]** material id [$-$]"""
@@ -56,9 +56,9 @@ class body:
     """**[mandatory]** clump id [$-$]"""
     body_id: int = None
     """**[mandatory]** body id [$-$]"""
-    body_state: type(state) = state()
+    body_state: type[base_state] = base_state()
     """**[mandatory]** body state [$-$]"""
-    body_shape: type(shape) = shape()
+    body_shape: type[base_shape] = base_shape()
     """**[mandatory]** body shape [$-$]"""
 
 

@@ -1,7 +1,7 @@
 from base_types import *
 
 
-class material_general:
+class material_base:
 	"""These are shared material variables for all materials"""
 	
 	density: float = None
@@ -13,7 +13,7 @@ class material_general:
 	id: int = None
 	"""**[mandatory]** material id, $id$, [$-$]"""
 	
-class material_spring_constants(material_general):
+class spring_constants(material_base):
 	"""This material describes linear-elastic behaviour with spring constants"""
 
 	normal_stiffness: float = None
@@ -22,7 +22,7 @@ class material_spring_constants(material_general):
 	shear_stiffness: float = None
 	"""**[mandatory]** shear stiffness, $K_{s}$, [$FL^{-1}$]"""
 
-class material_spring_dashpot(material_spring_constants):
+class spring_dashpot(spring_constants):
 	"""This material describes linear viscoelastic behaviour"""
 
 	normal_viscosity: float = None
@@ -31,7 +31,7 @@ class material_spring_dashpot(material_spring_constants):
 	shear_viscosity: float = None
 	"""**[mandatory]** shear damping coefficient, $c_{s}$, [$MT^{-1}$]"""
 
-class material_elastic_constants(material_general):
+class elastic_constants(material_base):
 	"""This material describes Hertzian-elastic behaviour with elasticity parameters"""
 
 	young: float = None
@@ -40,7 +40,7 @@ class material_elastic_constants(material_general):
 	poisson: float = None
 	"""**[mandatory]** poisson coefficient, $\nu$, [$-$]"""
 
-class material_visco_elastic_constant_COR(material_elastic_constants):
+class visco_elastic_constant_COR(elastic_constants):
 	"""This material describes visco-elastic behaviour with constant coefficient of restitution"""
 
 	normal_damping_ratio: float = None
@@ -49,13 +49,13 @@ class material_visco_elastic_constant_COR(material_elastic_constants):
 	shear_damping_ratio: float = None
 	"""**[mandatory]** shear damping coefficient, $\\beta_s$ [$-$]"""
 
-class material_visco_elastic_variable_COR(material_elastic_constants):
+class visco_elastic_variable_COR(elastic_constants):
 	"""This material describes visco-elastic behaviour with variable coefficient of restitution"""
 
 	relaxation_time: float = None
 	"""**[mandatory]** relaxation time, $A$, [$T$]"""
 
-class material_liquid_bridge(material_general):
+class liquid_bridge(material_base):
 	"""This material describes a liquid bridge model"""
 
 	surfaceTension_: float = None
@@ -64,7 +64,7 @@ class material_liquid_bridge(material_general):
 	contactAngle_: float = None
 	"""**[mandatory]** contact angle between particle and liquid bridge surface, $\\Theta$ [$-$]"""
 
-class material_liquid_bridge_migration(material_liquid_bridge):
+class liquid_bridge_migration(liquid_bridge):
 	"""This material describes a liquid bridge migration model"""
 
 	liquid_bridge_volume_min: float = None
@@ -76,7 +76,7 @@ class material_liquid_bridge_migration(material_liquid_bridge):
 	distribution_coefficient: float = None
 	"""**[mandatory]** the fraction of the liquid that is to be distributed to the neighboring contacts of the particles after a liquid bridge rupture, $f$ [$-$]"""
 
-class material_liquid_bridge_static(material_liquid_bridge):
+class liquid_bridge_static(liquid_bridge):
 	"This material describes a liquid bridge model, where every contact has the same liquid volume"
 
 	liquid_bridge_volume: float = None

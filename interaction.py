@@ -1,7 +1,7 @@
 from base_types import *
 
 
-class intr:
+class base_interaction:
     """This is generic pair interaction and this is a long comment continuing here"""
     model: str = None
     """**[mandatory]** which model applies to this interaction"""
@@ -14,14 +14,14 @@ class intr:
     creation_time: float = 0
     """*[optional]* time when the interaction was created (example of optional data)"""
 
-class normal(intr):
+class normal(base_interaction):
     """interaction in the normal direction"""
     normal: Vector3 = Vector3(0,0,0)
     """**[mandatory]** unit normal [$-$]"""
     normal_force: float = 0
     """**[mandatory]** normal force magnitude (positive in traction) [$F$]"""
 
-class shear(intr):
+class shear(base_interaction):
     """interaction in the tangential (or shear) direction"""
     shear_force: Vector3 = Vector3(0,0,0)
     """shear force [$F$]"""
@@ -68,7 +68,7 @@ class linear_frictional_3D(linear_3D):
     pass
 
 
-class liquid_bridge(intr):
+class liquid_bridge(base_interaction):
     """interaction to store base information needed for liquid bridges"""
     
     is_formed: bool = None
