@@ -55,7 +55,7 @@ class material_visco_elastic_variable_COR(material_elastic_constants):
 	relaxation_time: float = None
 	"""**[mandatory]** relaxation time, $A$, [$T$]"""
 
-class thermal_Blaze(material_elastic_constants):
+class material_thermal_Blaze(material_elastic_constants):
 	"""This material describes thermal behaviour dependent on friction and cohesion"""
 
 	friction_source: float = None
