@@ -68,3 +68,15 @@ class linear_frictional_3D(linear_3D):
     pass
 
 
+class liquid_bridge(intr):
+    """interaction to store base information needed for liquid bridges"""
+    
+    is_formed: bool = None
+    """**[mandatory]** whether a liquid bridge was formed previously"""
+    
+class liquid_bridge_dynamic(liquid_bridge):
+    """liquid bridge interaction, where the volume can change"""
+    
+    liquid_bridge_volume: float = None
+    """**[mandatory]** the liquid volume stored in the bridge, $V$ [$L^3$]"""
+
