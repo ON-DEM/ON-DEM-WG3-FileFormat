@@ -5,7 +5,7 @@ class base_material:
     """These are shared material variables for all materials"""
     
     density: float = None
-    """**[mandatory]** material density - particle density, $\rho$, [$ML^{-3}$]"""
+    """**[mandatory]** material density - particle density, $\\rho$, [$ML^{-3}$]"""
     
     friction_coefficient: float = None
     """**[mandatory]** material friction coefficient, $\\mu$, [$-$]"""
