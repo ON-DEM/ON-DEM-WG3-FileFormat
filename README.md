@@ -9,7 +9,7 @@ and in Gricad's gitlab:
 
 The generated pages are located on [github](https://on-dem.github.io/ON-DEM-WG3-FileFormat/) and on [gitlab](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data).
 
-## Local build:
+## Local build
 
 It should be noted that for a local build sphinx needs to be installed. This can be done by
 ```
@@ -84,5 +84,5 @@ Note: `.venv-docs/` is ignored by git and should not be committed.
 5. Look at [interaction.py](./interaction.py): Check if your model can inherit from existing models, some variables might need to be included both in [interaction.py](./interaction.py) to insure code interoperability.
 6. Add the necessary data to [materials.py](./materials.py), check if your material can inherit from existing materials. Some variables might need to be included both in [materials.py](./materials.py) to insure code interoperability. If you need to add variables using the names and symbols decided/proposed.
 7. Add model description to [model.py](./model.py).
-8. Generate the pages locally to check that the changes that you made look as expected.
+8. Generate the pages locally [(instructions to Local build)](#local-build) to check that the changes that you made look as expected.
 9. Create a new branch (with a meaningful name 🙏) with your addition (following the steps below) and create a merge request after you finish adding things.
