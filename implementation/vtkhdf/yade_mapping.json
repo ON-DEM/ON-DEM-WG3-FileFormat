@@ -44,28 +44,28 @@
     "vertices": "[[v[0],v[1],v[2]] for v in b.shape.vertices]"
   },
 
-  "material_general": {
+  "base_material": {
     "density":              "mat.density",
     "friction_coefficient": "float(np.tan(mat.frictionAngle)) if hasattr(mat,'frictionAngle') else 0.0",
     "id":                   "mat.id"
   },
 
-  "material_elastic_constants": {
+  "elastic_constants": {
     "young":   "mat.young",
     "poisson": "mat.poisson"
   },
 
-  "material_spring_constants": {
+  "spring_constants": {
     "normal_stiffness": "mat.kn",
     "shear_stiffness":  "mat.ks"
   },
 
-  "material_visco_elastic_constants_COR": {
+  "visco_elastic_constants_COR": {
     "damping_coefficient_normal": "mat.cn",
     "damping_coefficient_shear":  "mat.cs"
   },
 
-  "material_visco_elastic_variable_COR": {
+  "visco_elastic_variable_COR": {
     "dissipative_constant": "mat.alpha"
   },
 
