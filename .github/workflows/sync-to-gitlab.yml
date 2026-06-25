@@ -1,4 +1,4 @@
-name: Build documentation
+name: GitLab - Build documentation
 
 on:
   push:

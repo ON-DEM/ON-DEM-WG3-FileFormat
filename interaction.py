@@ -87,3 +87,15 @@ class liquid_bridge_dynamic(liquid_bridge):
     liquid_bridge_volume: float = None
     """**[mandatory]** the liquid volume stored in the bridge, $V$ [$L^3$]"""
 
+class normal_basic_luding(normal_linear):
+	"""This material describes linear-elastic behaviour with spring constants"""
+
+	k1: float = None
+	"""**[mandatory]** normal stiffness in plastic branch, $K_{1}$, [$FL^{-1}$]"""
+
+	k2: float = None
+	"""**[mandatory]** normal stiffness in unloading and reloading elastic branch, $K_{n}^{U}$, [$FL^{-1}$]"""
+	
+	kc: float = None
+	"""**[mandatory]** normal stiffness in tensile adhesive branch, $K_{adh}^{U}$, [$FL^{-1}$]"""
+

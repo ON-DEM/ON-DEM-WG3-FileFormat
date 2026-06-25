@@ -82,6 +82,18 @@ class material_thermal_Blaze(material_thermal_base):
     thickness: float = None
     """**[optional]** artificial thickness for geometry, $\delta\ d$, [$L$]"""
     
+class material_basic_luding(material_spring_constants):
+	"""This material describes linear-elastic behaviour with spring constants"""
+
+	normal_stiffness_plastic: float = None
+	"""**[mandatory]** normal stiffness in plastic branch, $K_{1}$, [$FL^{-1}$]"""
+
+	normal_stiffness_unloading_reloading: float = None
+	"""**[mandatory]** normal stiffness in unloading and reloading elastic branch, $K_{n}^{U}$, [$FL^{-1}$]"""
+	
+	normal_stiffness_tensile: float = None
+	"""**[mandatory]** normal stiffness in tensile adhesive branch, $K_{adh}^{U}$, [$FL^{-1}$]"""
+
 class material_liquid_bridge(material_general):
 	"""This material describes a liquid bridge model"""
 

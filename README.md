@@ -5,12 +5,11 @@ This project defines generic data structures to exchange DEM simulations data. I
 The source code is mirrored in ON-DEM's project at Github.com:
 [https://github.com/ON-DEM/ON-DEM-WG3-FileFormat](https://github.com/ON-DEM/ON-DEM-WG3-FileFormat)
 and in Gricad's gitlab:
-[(https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data)](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data) where it is built.
+[https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data)
 
-The generated pages are located [here](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data).
+The generated pages are located on [github](https://on-dem.github.io/ON-DEM-WG3-FileFormat/) and on [gitlab](https://on-dem.gricad-pages.univ-grenoble-alpes.fr/model-data).
 
-
-## Local build:
+## Local build
 
 It should be noted that for a local build sphinx needs to be installed. This can be done by
 ```
@@ -30,7 +29,6 @@ git clone https://github.com/ON-DEM/ON-DEM-WG3-FileFormat.git
 cd sphinx
 make html
 make latexpdf
-
 ```
 The output is in ```sphinx/build```
 
@@ -39,6 +37,11 @@ The output is in ```sphinx/build```
 1. run the docker image from registry directly:
 ```
 docker run -it gricad-registry.univ-grenoble-alpes.fr/on-dem/model-data:main
+```
+or 
+```
+docker pull ghcr.io/on-dem/on-dem-wg3-fileformat:sha-d2bc1b2
+docker run -it ghcr.io/on-dem/on-dem-wg3-fileformat:sha-d2bc1b2 bash
 ```
 Then reproduce the steps above.
 
@@ -62,7 +65,6 @@ make latexpdf
 
 Note: `.venv-docs/` is ignored by git and should not be committed.
 
-
 ## Remote build:
 
  - Click the "edit" button when viewing a source file
@@ -79,7 +81,8 @@ Note: `.venv-docs/` is ignored by git and should not be committed.
 2. Figure out which variables are needed for the interactions: Most likely, some of the variables are already defined somewhere.
 3. Explore the file existing format specifications, check: [Materials data](./materials.py), [Interaction data](./interaction.py) and [Interaction models](./model.py).
 4. Check the "VARIABLES" tab on [this spreadsheet](https://docs.google.com/spreadsheets/d/1UALlIVtaxdMpy1aX-9HdBKr23dg9fmQPuUDZsQNo8TI/edit?gid=0#gid=0). If the variables of your model are already included, then use the variable name(s), and symbols decided. If not there, make a proposal following the agreed rules (snake_case, LaTeX format for symbols and quantities).
-5. In Github: create a new branch with your addition (following the steps below) and create a merge request after you finish adding things (don’t push directly to the main branch).
-6. Look at [interaction.py](./interaction.py): Check if your model can inherit from existing models, some variables might need to be included both in [interaction.py](./interaction.py) to insure code interoperability.
-7. Add the necessary data to [materials.py](./materials.py), check if your material can inherit from existing materials. Some variables might need to be included both in [materials.py](./materials.py) to insure code interoperability. If you need to add variables using the names and symbols decided/proposed.
-8. Add model description to [model.py](./model.py).
+5. Look at [interaction.py](./interaction.py): Check if your model can inherit from existing models, some variables might need to be included both in [interaction.py](./interaction.py) to insure code interoperability.
+6. Add the necessary data to [materials.py](./materials.py), check if your material can inherit from existing materials. Some variables might need to be included both in [materials.py](./materials.py) to insure code interoperability. If you need to add variables using the names and symbols decided/proposed.
+7. Add model description to [model.py](./model.py).
+8. Generate the pages locally [(instructions to Local build)](#local-build) to check that the changes that you made look as expected.
+9. Create a new branch (with a meaningful name 🙏) with your addition (following the steps below) and create a merge request after you finish adding things.

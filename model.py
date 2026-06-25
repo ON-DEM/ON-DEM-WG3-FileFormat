@@ -29,4 +29,9 @@ class thermal_base(material_elastic_constants):
 class thermal_Blaze(termal_base):
 	"""This material describes thermal behaviour dependent on friction and cohesion"""
     implementations: list = ['BlazeDEM']
+class linear_basic_luding_3D(elastic_frictional_3D):
+    """
+    Basic Luding model with spring constants for plastic loading, unload/reload and tensile adhesion .
+    """
+    implementations: list = ['YADE', '...']
     """codes implementing this model"""
