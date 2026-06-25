@@ -20,3 +20,10 @@ class elastic_frictional_6D(elastic_frictional_3D):
     """
     implementations: list = ['YADE', '...']
     """codes implementing this model"""
+
+class linear_basic_luding_3D(elastic_frictional_3D):
+    """
+    Basic Luding model with spring constants for plastic loading, unload/reload and tensile adhesion .
+    """
+    implementations: list = ['YADE', '...']
+    """codes implementing this model"""
