@@ -21,13 +21,13 @@ class elastic_frictional_6D(elastic_frictional_3D):
     implementations: list = ['YADE', '...']
     """codes implementing this model"""
 
-class thermal_base(material_elastic_constants):
-	"""This material describes thermal behaviour"""
+class base_thermal(elastic_constants):
+    """This material describes thermal behaviour"""
     implementations: list = []
     """codes implementing this model"""
 
-class thermal_Blaze(termal_base):
-	"""This material describes thermal behaviour dependent on friction and cohesion"""
+class thermal_Blaze(base_thermal):
+    """This material describes thermal behaviour dependent on friction and cohesion"""
     implementations: list = ['BlazeDEM']
 class linear_basic_luding_3D(elastic_frictional_3D):
     """
