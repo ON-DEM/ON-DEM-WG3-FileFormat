@@ -1,7 +1,7 @@
 from base_types import *
 
 
-class periodic_cell:
+class periodic_box:
 	"""Defines 3D-periodic space and its deformation rate"""
 	
 	shape: Matrix3 = Matrix3.identity
