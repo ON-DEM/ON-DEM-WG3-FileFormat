@@ -24,7 +24,7 @@ class periodic_walls:
 	distance_right: float = 0
 	"""**[mandatory]** the distance of the wall from the origin in the direction of the normal"""
 	
-class inserion:
+class insertion:
 	"""Defines the general variables needed for all insertion boundaries"""
  
 	initial_volume: float
@@ -45,7 +45,7 @@ class inserion:
 	material: int
 	"""**[mandatory]** index indicating which material properties are given to the inserted particles, [$-$]"""
 	
-class cube_insertion(inserion):
+class cube_insertion(insertion):
 	"""Defines a cuboid shaped insertion region"""
 
 	pos_min: Vector3
