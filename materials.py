@@ -68,7 +68,7 @@ class base_thermal(elastic_constants):
     max_temp: float = None
     """**[optional]** max temperature limit of the material,  $T_{max}$, [$\\theta$]"""
 
-class thermal_Blaze(base_thermal):
+class thermal_blaze(base_thermal):
     """This material describes thermal behaviour dependent on friction and cohesion"""
 
     friction_source: float = None
