@@ -67,6 +67,10 @@ class linear_frictional_3D(linear_3D):
     """**[mandatory]** friction coefficient, $\mu$, [$-$]"""
     pass
 
+class thermal_Blaze(material_elastic_constants):
+	"""This material describes thermal behaviour dependent on friction and cohesion"""
+    pass
+
 class exotic(normal_hertz, shear_linear):
     """This is an arbitrary combination "à la" MercuryDPM"""
     pass
