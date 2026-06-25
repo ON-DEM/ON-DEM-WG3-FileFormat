@@ -67,6 +67,13 @@ class linear_frictional_3D(linear_3D):
     """**[mandatory]** friction coefficient, $\mu$, [$-$]"""
     pass
 
+class thermal_base(material_elastic_constants):
+	"""This material describes thermal behaviour"""
+    pass
+
+class thermal_Blaze(thermal_base):
+	"""This material describes thermal behaviour dependent on friction and cohesion"""
+    pass
 
 class liquid_bridge(intr):
     """interaction to store base information needed for liquid bridges"""
