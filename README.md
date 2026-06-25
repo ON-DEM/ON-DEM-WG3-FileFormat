@@ -97,3 +97,8 @@ Note: `.venv-docs/` is ignored by git and should not be committed.
 7. Add model description to [model.py](./model.py).
 8. Generate the pages locally [(instructions to Local build)](#local-build) to check that the changes that you made look as expected.
 9. Create a new branch (with a meaningful name 🙏) with your addition (following the steps below) and create a merge request after you finish adding things.
+
+> [!Note]
+> **Remarks:**
+> * When defining variable names in LaTeX format (e.g. `$\nu$`), make sure they don’t coincide with Python commands (e.g. `\n`). In this case, use double backslash to override it, so it can by compiled in LaTeX format (e.g. `$\\nu$`). (It should work if you use `\\` everywhere
+> * When writing a block of code in the .py files, be consistent at the beginning of a new row: use either tabs or spaces (don’t mix!)
