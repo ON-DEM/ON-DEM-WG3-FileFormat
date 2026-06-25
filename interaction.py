@@ -68,7 +68,7 @@ class linear_frictional_3D(linear_3D):
     pass
 
 class thermal_base(material_elastic_constants):
-	"""This material describes thermal behaviour dependent on friction and cohesion"""
+	"""This material describes thermal behaviour"""
     pass
 
 class thermal_Blaze(thermal_base):
