@@ -55,25 +55,28 @@ class material_visco_elastic_variable_COR(material_elastic_constants):
 	relaxation_time: float = None
 	"""**[mandatory]** relaxation time, $A$, [$T$]"""
 
-class material_thermal_Blaze(material_elastic_constants):
-	"""This material describes thermal behaviour dependent on friction and cohesion"""
-
-	friction_source: float = None
-	"""**[mandatory]** friction value used for heat generation, $\mu_{\theta}$, [$-$]"""
+class material_thermal_base(material_elastic_constants);
+    """This material describes thermal behaviour dependent on friction and cohesion"""
     thermal_conduction: float = None
     """**[mandatory]** thermal conduction of the material, $c_v$, [$E/(L*\theta)$]"""
     thermal_capacity: float = None
     """**[mandatory]** thermal capacity of the material, $c_p$, [$E/\theta$]"""
     initial_themperature: float = None
-    """**[mandatory]** initial temperature the material, $T_0$, [$\theta$]"""
+	 """**[mandatory]** initial temperature the material, $T_0$, [$\theta$]"""
+	min_temp: float = None
+    """**[optional]** min temperature limit of the material,  $T_{min}$, [$\theta$]"""
+    max_temp: float = None
+    """**[optional]** max temperature limit of the material,  $T_{max}$, [$\theta$]"""
+
+class material_thermal_Blaze(material_thermal_base):
+	"""This material describes thermal behaviour dependent on friction and cohesion"""
+
+	friction_source: float = None
+	"""**[mandatory]** friction value used for heat generation, $\mu_{\theta}$, [$-$]"""
     contact_area_effective: float = None
     """**[mandatory]** \% of contact area, $A_{eff}$, [$-$]"""
     cohesion_rate: float = None
     """**[mandatory]** cohesion rate, $SE_{rate}$, [$E/(L^2*T)$]"""
-    min_temp: float = None
-    """**[optional]** min temperature limit of the material,  $T_{min}$, [$\theta$]"""
-    max_temp: float = None
-    """**[optional]** max temperature limit of the material,  $T_{max}$, [$\theta$]"""
     cohesion_limit: float = None
     """**[optional]** max surface energy value, $SE_{max}$, [$E/L^2$]"""
     thickness: float = None
