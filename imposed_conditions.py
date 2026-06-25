@@ -9,5 +9,7 @@ class periodic_box:
 	
 	velocity_gradient: Matrix3 = Matrix3.zero
 	"""**[mandatory]** velocity gradient, $D$, [$L$]"""
+
+	implementations: list = ['YADE','LAMMPS']
 	
 
