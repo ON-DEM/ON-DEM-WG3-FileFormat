@@ -12,3 +12,5 @@ class scene:
     """simulated time [T]"""
     gravity: Vector3 = Vector3(0,0,0)
     """Gravitational acceleration [L/T²]"""
+    display_group_names: List[str] = ['all']
+    """*[optional]* names of the display groups, indexed by ``base_body.display_group``. Each name is the name of one block of the VTKHDF MultiBlockDataSet. Default ``['all']``, so index 0 is always valid; the user may overwrite it, e.g. ``['particles', 'geometry']``. Every ``display_group`` used by a body must be a valid index into this list. Names must be unique and non-empty, must not contain ``/`` and must not be ``Assembly`` [$-$]"""
