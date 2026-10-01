@@ -20,7 +20,7 @@ class base_state:
 class thermal(base_state):
     """mechanical + thermal state"""
     temperature: float = None
-    """*[optional]* temperature [$\Theta$]"""
+    """*[optional]* temperature [$\\Theta$]"""
 
 class liquid_film(base_state):
     """mechanical + liquid film state"""
