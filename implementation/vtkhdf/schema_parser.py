@@ -105,7 +105,7 @@ def _extract_units(doc: str) -> str:
 
 def _parse_file(filepath: str, module_name: str) -> dict:
     """Parse one schema .py file. Returns dict of ClassDef."""
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         source = f.read()
 
     try:
@@ -166,8 +166,9 @@ def _parse_file(filepath: str, module_name: str) -> dict:
                 if i + 1 < len(body):
                     nxt = body[i + 1]
                     if (isinstance(nxt, ast.Expr) and
-                            isinstance(nxt.value, (ast.Constant, ast.Str))):
-                        fdoc = nxt.value.s if isinstance(nxt.value, ast.Constant) else nxt.value.s
+                            isinstance(nxt.value, ast.Constant) and
+                            isinstance(nxt.value.value, str)):
+                        fdoc = nxt.value.value
 
                 mandatory = "**[mandatory]**" in fdoc or "[mandatory]" in fdoc
                 optional  = "*[optional]*"   in fdoc or "[optional]"  in fdoc
