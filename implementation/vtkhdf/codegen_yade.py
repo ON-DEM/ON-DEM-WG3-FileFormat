@@ -284,6 +284,13 @@ _BODY_CLASSES = ["base_body", "base_state", "thermal", "liquid_film"]
 _SHAPE_CLASSES = ["sphere", "box", "polyhedron"]
 
 # HDF5 types of the shape fields that are not in the schema (mapping "_extra_shapes")
+# HDF5 types of per-body fields that are not in the schema yet (mapping
+# "_extra_body_fields"; provisional, each one is a question for Bruno)
+_EXTRA_BODY_FIELD_TYPES = {
+    "blocked_dofs": "string", "group_mask": "scalar_int", "is_damped": "scalar_bool",
+    "angular_momentum": "vector3", "density_scaling": "scalar_float",
+}
+
 _EXTRA_SHAPE_FIELD_TYPES = {
     "axis": "scalar_int", "sense": "scalar_int",
     "normal": "vector3", "vertices": "matrix3",
@@ -344,6 +351,12 @@ def _gen_bodies_exporter(schema: Schema, mapping: dict) -> str:
                 expr = _lookup_mapping(mapping, cls_name, fld.name)
                 if expr:
                     lines += _field_entry(fld, expr, "b", cls_name)
+    extra_body = mapping.get("_extra_body_fields", {})
+    if extra_body:
+        lines.append("    # not in the schema yet (provisional, mapping _extra_body_fields)")
+    for fname, expr in extra_body.items():
+        h = _EXTRA_BODY_FIELD_TYPES.get(fname, "scalar_float")
+        lines.append(f'    ("{fname}", "{h}", True, lambda b: {expr}),')
     lines.append("]")
     lines.append("")
 

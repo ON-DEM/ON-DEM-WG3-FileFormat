@@ -31,6 +31,14 @@
     "volume":           "_sphere_volume(b)"
   },
 
+  "_extra_body_fields": {
+    "blocked_dofs":     "b.state.blockedDOFs",
+    "group_mask":       "b.groupMask",
+    "is_damped":        "b.state.isDamped",
+    "angular_momentum": "b.state.angMom",
+    "density_scaling":  "b.state.densityScaling"
+  },
+
   "_shape_type": "type(b.shape).__name__",
 
   "_shape_groups": {

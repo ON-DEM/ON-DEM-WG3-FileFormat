@@ -66,6 +66,11 @@ print(f"Bodies added: {len(O.bodies)} ({len(O.bodies)-5} spheres, 5 walls)")
 O.bodies[5].state.ori = Quaternion((1, 2, 3), 0.7)          # a sphere: keeps rotating
 O.bodies[0].state.ori = Quaternion((0, 0, 1), math.pi / 2)  # the floor wall is fixed: stays exact
 
+# non-default per-body state (provisional extras): blocked DOFs, collision mask, damping
+O.bodies[7].state.blockedDOFs = "xyz"
+O.bodies[8].groupMask = 3
+O.bodies[9].state.isDamped = False
+
 # ---- Engines ----
 def set_engines():
     O.engines = [
@@ -106,7 +111,9 @@ for b in O.bodies:
         wall=(b.shape.axis, b.shape.sense) if isinstance(b.shape, Wall) else None,
         mat=dict(density=b.material.density, young=b.material.young, poisson=b.material.poisson,
                  frictionAngle=b.material.frictionAngle, label=b.material.label),
-        group=group_of(b))
+        group=group_of(b),
+        extras=dict(blockedDOFs=b.state.blockedDOFs, groupMask=b.groupMask, isDamped=b.state.isDamped,
+                    angMom=tuple(b.state.angMom), densityScaling=b.state.densityScaling))
 
 failures = []
 def check(cond, msg):
@@ -202,6 +209,9 @@ for bid, st in before.items():
         ok = math.isclose(got, v, rel_tol=1e-12) if isinstance(v, float) else got == v
         check(ok, f"body {bid}: material {k} {got!r} != {v!r}")
     check(r["display_group"][b.id] == st["group"], f"body {bid}: display group")
+    got = dict(blockedDOFs=b.state.blockedDOFs, groupMask=b.groupMask, isDamped=b.state.isDamped,
+               angMom=tuple(b.state.angMom), densityScaling=b.state.densityScaling)
+    check(got == st["extras"], f"body {bid}: state extras {got} != {st['extras']}")
     if st["radius"] is not None:
         check(b.shape.radius == st["radius"], f"body {bid}: radius")
         check(b.state.mass == st["mass"], f"body {bid}: mass")

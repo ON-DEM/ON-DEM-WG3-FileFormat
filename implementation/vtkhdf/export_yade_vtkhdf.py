@@ -195,6 +195,12 @@ _BODY_FIELDS = [
     ("liquid_film_volume", "scalar_float", False, lambda b: b.state.liquidFilmVolume),
     # [mandatory] sphere.radius: float
     ("radius", "scalar_float", True, lambda b: b.shape.radius),
+    # not in the schema yet (provisional, mapping _extra_body_fields)
+    ("blocked_dofs", "string", True, lambda b: b.state.blockedDOFs),
+    ("group_mask", "scalar_int", True, lambda b: b.groupMask),
+    ("is_damped", "scalar_bool", True, lambda b: b.state.isDamped),
+    ("angular_momentum", "vector3", True, lambda b: b.state.angMom),
+    ("density_scaling", "scalar_float", True, lambda b: b.state.densityScaling),
 ]
 
 # Shape fields per /ONDEM/Bodies group (fields that are not in the blocks)

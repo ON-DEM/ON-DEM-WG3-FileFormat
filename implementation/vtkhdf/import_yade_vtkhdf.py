@@ -252,6 +252,21 @@ def _set_state(b, rec):
         b.state.ori = Quaternion(qw, qx, qy, qz)
 
 
+def _set_extras(b, rec):
+    """Per-body state that the schema has no field for yet (provisional extras,
+    see implementation/README.md). Absent in older files: YADE defaults stay."""
+    if "blocked_dofs" in rec:
+        b.state.blockedDOFs = str(rec["blocked_dofs"])
+    if "group_mask" in rec:
+        b.groupMask = int(rec["group_mask"])
+    if "is_damped" in rec:
+        b.state.isDamped = bool(rec["is_damped"])
+    if "angular_momentum" in rec:
+        b.state.angMom = _v3(rec["angular_momentum"])
+    if "density_scaling" in rec:
+        b.state.densityScaling = float(rec["density_scaling"])
+
+
 def _make_sphere(rec, yade_mat):
     b = utils.sphere(center=_v3(rec["position"]), radius=float(rec["radius"]), material=yade_mat)
     _set_state(b, rec)
@@ -402,6 +417,7 @@ def import_vtkhdf(filename,
         rec = bodies[bid]
         sg = rec["shape_group"]
         b = _MAKERS[sg](rec, mat_id_map[int(rec["material_id"])])
+        _set_extras(b, rec)
         new_id = O.bodies.append(b)
         id_map[bid] = new_id
         display_group[new_id] = rec["display_group"]
