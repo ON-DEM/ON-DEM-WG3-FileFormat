@@ -120,10 +120,10 @@ def _export_materials(f):
         if mat.id in seen_ids: continue
         seen_ids.add(mat.id)
         g = mat_grp.create_group(str(mat.id))
+        g.attrs["schema_classes"] = 'base_material, hertz_elastic, frictional_3D'
+        g.attrs["provisional"] = "the schema class of YADE FrictMat is open; poisson_ratio holds YADE's ks/kn ratio and young_modulus its contact modulus (see implementation/README.md)"
 
         # Extra YADE-specific attributes (not in schema but useful)
-        try: g.create_dataset("friction_angle_rad", data=np.float64(float(mat.frictionAngle) if hasattr(mat,'frictionAngle') else 0.0))
-        except: pass
         try: g.create_dataset("label", data=str(mat.label if mat.label else '').encode("utf-8"))
         except: pass
         try: g.create_dataset("material_type", data=str(type(mat).__name__).encode("utf-8"))
@@ -134,14 +134,35 @@ def _export_materials(f):
         try:
             hdf5_write_field(g, "id", "scalar_int", mat.id, scalar_as_dataset=True)
         except Exception as _e:
-            pass  # field not available for this material type
+            print(f"[export_vtkhdf] Warning: material {mat.id}: mandatory field id not written ({_e})")
 
         # [mandatory] density: float [$ML^{-3}$]
         try:
             hdf5_write_field(g, "density", "scalar_float", mat.density, scalar_as_dataset=True)
         except Exception as _e:
-            pass  # field not available for this material type
+            print(f"[export_vtkhdf] Warning: material {mat.id}: mandatory field density not written ({_e})")
 
+        # --- hertz_elastic: Material with Hertzian-elastic behaviour. ---
+        # [mandatory] young_modulus: float [$FL^{-2}$]
+        try:
+            hdf5_write_field(g, "young_modulus", "scalar_float", mat.young, scalar_as_dataset=True)
+        except Exception as _e:
+            print(f"[export_vtkhdf] Warning: material {mat.id}: mandatory field young_modulus not written ({_e})")
+
+        # [mandatory] poisson_ratio: float [$-$]
+        try:
+            hdf5_write_field(g, "poisson_ratio", "scalar_float", mat.poisson, scalar_as_dataset=True)
+        except Exception as _e:
+            print(f"[export_vtkhdf] Warning: material {mat.id}: mandatory field poisson_ratio not written ({_e})")
+
+        # --- frictional_3D: Adds sliding friction behaviour to any material. ---
+        # [mandatory] shear_friction: float [$-$]
+        try:
+            hdf5_write_field(g, "shear_friction", "scalar_float", float(np.tan(mat.frictionAngle)), scalar_as_dataset=True)
+        except Exception as _e:
+            print(f"[export_vtkhdf] Warning: material {mat.id}: mandatory field shear_friction not written ({_e})")
+
+        # UNMAPPED: shear_damping
 
 # Per-body fields: (name, hdf5 type, mandatory, getter).
 # Generated from the schema; getters are the mapping expressions.

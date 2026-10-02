@@ -26,21 +26,25 @@ from yade import Quaternion
 import numpy as np
 import h5py
 
-# ---- Material ----
+# ---- Materials: non-default values, so a silent default cannot pass ----
 mat = O.materials.append(
-    FrictMat(density=2600, young=1e7, poisson=0.3,
-             frictionAngle=radians(30), label="glass")
+    FrictMat(density=2450, young=3.7e7, poisson=0.27,
+             frictionAngle=radians(23), label="glass")
+)
+wall_mat = O.materials.append(
+    FrictMat(density=7800, young=2.1e8, poisson=0.41,
+             frictionAngle=radians(11), label="steel")
 )
 
 # ---- Box: 4 side walls + 1 floor (no lid) ----
 # Box spans x: [-0.05, 0.05], y: [-0.05, 0.05], z: [0, ...]
 half = 0.05
 
-O.bodies.append(utils.wall( 0,      axis=2, sense= 1, material=mat))  # floor  z=0
-O.bodies.append(utils.wall(-half,   axis=0, sense= 1, material=mat))  # left   x=-0.05
-O.bodies.append(utils.wall( half,   axis=0, sense=-1, material=mat))  # right  x=+0.05
-O.bodies.append(utils.wall(-half,   axis=1, sense= 1, material=mat))  # front  y=-0.05
-O.bodies.append(utils.wall( half,   axis=1, sense=-1, material=mat))  # back   y=+0.05
+O.bodies.append(utils.wall( 0,      axis=2, sense= 1, material=wall_mat))  # floor  z=0
+O.bodies.append(utils.wall(-half,   axis=0, sense= 1, material=wall_mat))  # left   x=-0.05
+O.bodies.append(utils.wall( half,   axis=0, sense=-1, material=wall_mat))  # right  x=+0.05
+O.bodies.append(utils.wall(-half,   axis=1, sense= 1, material=wall_mat))  # front  y=-0.05
+O.bodies.append(utils.wall( half,   axis=1, sense=-1, material=wall_mat))  # back   y=+0.05
 
 # ---- Pack spheres in a regular grid inside the box ----
 r   = 0.012   # radius — large enough to touch neighbours
@@ -100,7 +104,9 @@ for b in O.bodies:
         ori=np.array([b.state.ori[k] for k in range(4)]), mass=b.state.mass,
         radius=b.shape.radius if isinstance(b.shape, Sphere) else None,
         wall=(b.shape.axis, b.shape.sense) if isinstance(b.shape, Wall) else None,
-        density=b.material.density, group=group_of(b))
+        mat=dict(density=b.material.density, young=b.material.young, poisson=b.material.poisson,
+                 frictionAngle=b.material.frictionAngle, label=b.material.label),
+        group=group_of(b))
 
 failures = []
 def check(cond, msg):
@@ -157,6 +163,16 @@ with h5py.File(out, "r") as f:
         ids = set(int(v) for v in ig[t]["id1"][:]) | set(int(v) for v in ig[t]["id2"][:])
         check(ids <= block_ids, f"interaction ids not in the blocks: {sorted(ids - block_ids)}")
         check(t == t.lower(), f"interaction group name {t!r} is not snake_case")
+    # materials: schema field names, provisional class tag
+    for key, g in f["ONDEM/Materials"].items():
+        for fld in ("id", "density", "young_modulus", "poisson_ratio", "shear_friction"):
+            check(fld in g, f"material {key}: field {fld} missing")
+        check(g.attrs.get("schema_classes") == "base_material, hertz_elastic, frictional_3D", f"material {key}: schema_classes attribute")
+        check("provisional" in g.attrs, f"material {key}: provisional attribute")
+        ym = O.materials[int(g["id"][()])]
+        check(g["young_modulus"][()] == ym.young and g["poisson_ratio"][()] == ym.poisson, f"material {key}: young/poisson values")
+        check(math.isclose(g["shear_friction"][()], math.tan(ym.frictionAngle), rel_tol=1e-15), f"material {key}: shear_friction = tan(frictionAngle)")
+    check(len(f["ONDEM/Materials"]) == 2, f"{len(f['ONDEM/Materials'])} materials in the file, expected 2")
     pairs_file = sorted((int(a), int(b)) for t in ig for a, b in zip(ig[t]["id1"][:], ig[t]["id2"][:]))
     pairs_yade = sorted((i.id1, i.id2) for i in real_intrs)
     check(pairs_file == pairs_yade, "interaction pairs id1/id2 match the scene")
@@ -181,7 +197,10 @@ for bid, st in before.items():
     check(close(np.array(b.state.angVel), st["angVel"]), f"body {bid}: angular velocity")
     q = np.array([b.state.ori[k] for k in range(4)])
     check(close(q, st["ori"]) or close(q, -st["ori"]), f"body {bid}: orientation {q} != {st['ori']}")
-    check(b.material.density == st["density"], f"body {bid}: material density")
+    for k, v in st["mat"].items():
+        got = getattr(b.material, k)
+        ok = math.isclose(got, v, rel_tol=1e-12) if isinstance(v, float) else got == v
+        check(ok, f"body {bid}: material {k} {got!r} != {v!r}")
     check(r["display_group"][b.id] == st["group"], f"body {bid}: display group")
     if st["radius"] is not None:
         check(b.shape.radius == st["radius"], f"body {bid}: radius")
@@ -203,6 +222,21 @@ with h5py.File(out2, "r") as f:
         ids = sorted(int(v) for v in f["VTKHDF"][name]["PointData/body_id"][:])
         expected = sorted(bid for bid, st in before.items() if NAMES[st["group"]] == name)
         check(ids == expected, f"re-export {name}: body ids")
+
+# ---- A material field missing in the file: the importer must fail clearly ----
+import shutil
+broken = os.path.join(tempfile.gettempdir(), "test_box_spheres_no_young.vtkhdf")
+shutil.copy(out, broken)
+with h5py.File(broken, "a") as f:
+    del f["ONDEM/Materials"][list(f["ONDEM/Materials"])[0]]["young_modulus"]
+O.reset()
+set_engines()
+try:
+    import_vtkhdf(broken)
+    check(False, "import of a file without young_modulus must raise")
+except ValueError as e:
+    check("young_modulus" in str(e), f"error names the missing field: {e}")
+    print("  missing field rejected:", e)
 
 print(f"Files: {out}, {out2}")
 if failures:

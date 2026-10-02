@@ -201,17 +201,10 @@ def _gen_scene_exporter(schema: Schema, mapping: dict) -> str:
 
 
 def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
-    """Generate _export_materials collecting all material_* classes."""
-    # Find all material classes in order of inheritance
-    mat_classes = [
-        "base_material",
-        "spring_constants",
-        "elastic_constants",
-        "visco_elastic_constants_COR",
-        "visco_elastic_variable_COR",
-    ]
-    # Only keep those that exist in schema
-    mat_classes = [c for c in mat_classes if c in schema.classes]
+    """Generate _export_materials: one group per material with the fields of the
+    schema classes listed in the mapping ("_material_classes")."""
+    mat_classes = mapping.get("_material_classes", ["base_material"])
+    note = mapping.get("_material_classes_note")
 
     lines = [
         "def _export_materials(f):",
@@ -224,6 +217,11 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
         "        if mat.id in seen_ids: continue",
         "        seen_ids.add(mat.id)",
         "        g = mat_grp.create_group(str(mat.id))",
+        f'        g.attrs["schema_classes"] = {", ".join(mat_classes)!r}',
+    ]
+    if note:
+        lines.append(f'        g.attrs["provisional"] = {note!r}')
+    lines += [
         "",
         "        # Extra YADE-specific attributes (not in schema but useful)",
     ]
@@ -238,16 +236,19 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
         lines.append(f'        except: pass')
     lines.append("")
 
-    # For each material class, emit its fields
+    # For each material class, emit its fields (strict lookup: class.field only)
     already_emitted = set()
     for cls_name in mat_classes:
-        cls = schema.classes[cls_name]
+        cls = schema.classes.get(cls_name)
+        if not cls:
+            lines.append(f"        # WARNING: schema class {cls_name} not found")
+            continue
         lines.append(f"        # --- {cls_name}: {cls.docstring} ---")
         for fld in cls.fields:
             if fld.name in already_emitted:
                 continue
             already_emitted.add(fld.name)
-            expr = _lookup_mapping(mapping, cls_name, fld.name)
+            expr = mapping.get(cls_name, {}).get(fld.name)
             if not expr:
                 lines.append(f'        # UNMAPPED: {fld.name}')
                 continue
@@ -257,7 +258,10 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
             line = _hdf5_write_expr(fld, expr, "g", scalar_as_dataset=True)
             lines.append("            " + line)
             lines.append(f"        except Exception as _e:")
-            lines.append(f'            pass  # field not available for this material type')
+            if fld.mandatory:
+                lines.append(f'            print(f"[export_vtkhdf] Warning: material {{mat.id}}: mandatory field {fld.name} not written ({{_e}})")')
+            else:
+                lines.append(f'            pass  # field not available for this material type')
             lines.append("")
 
     return "\n".join(lines) + "\n"

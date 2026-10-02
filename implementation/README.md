@@ -68,11 +68,31 @@ The split between the blocks and `/ONDEM` is an open point; this is the current 
 | wall `axis`, `sense` | `/ONDEM/Bodies/wall/` | not in the schema yet |
 | facet `vertices`, `normal` | `/ONDEM/Bodies/facet/` | not in the schema yet |
 
+### Materials (provisional)
+
+`/ONDEM/Materials/<id>/` holds one scalar dataset per field, named as in the schema. Each group has the attribute `schema_classes` (the schema classes its fields come from) and, while the choice is open, `provisional`.
+
+YADE's `FrictMat` does not match any schema class yet. It is written for now as `base_material` + `hertz_elastic` + `frictional_3D`:
+
+| Schema field | YADE `FrictMat` | Note |
+|---|---|---|
+| `base_material.id` | `id` | |
+| `base_material.density` | `density` | |
+| `hertz_elastic.young_modulus` | `young` | in YADE a contact modulus: kn = 2 E₁R₁ E₂R₂ / (E₁R₁ + E₂R₂) |
+| `hertz_elastic.poisson_ratio` | `poisson` | in YADE the stiffness ratio ks/kn, not a Poisson's ratio |
+| `frictional_3D.shear_friction` | tan(`frictionAngle`) | |
+| `frictional_3D.shear_damping` | none | mandatory in the schema, not written: FrictMat has no shear damping |
+
+`label` and `material_type` are written as extra, YADE-specific datasets. The importer rebuilds only `FrictMat`. It needs the five fields above and stops with an error that names the material and the missing field; there are no default values.
+
+**To settle with Bruno:** which schema class a linear contact law like FrictMat belongs to. FrictMat is a linear law, but `young_modulus` and `poisson_ratio` are in `hertz_elastic`. One option is a linear class with a contact modulus and a stiffness ratio. Another is to write `normal_stiffness`/`shear_stiffness`, but YADE computes those per contact, not per material. Also open: what to write for `shear_damping` when a code has none.
+
 ### Current limits
 
 - **Interactions are not restored on import.** They are written to `/ONDEM/Interactions` but the importer does not read them: YADE rebuilds the contacts with its collider on the first step, so the contact history (accumulated shear force, sliding state) is lost on restart. Interactions are not visible in ParaView yet either.
 - **Non-sphere bodies appear as points.** Every body is one point (its position) in its block. Walls, facets and boxes are shown as points until the schema has a mesh/facet shape.
 - The importer restores spheres and walls only. Boxes, facets, polyhedra and other shapes are reported as skipped; clumps are not rebuilt.
+- The importer rebuilds `FrictMat` materials only (see above).
 
 ### For YADE Users
 
@@ -109,7 +129,7 @@ Bodies are appended in increasing `body_id`. Into an empty scene YADE gives them
   ```bash
   python3 implementation/vtkhdf/testing/test_multiblock_utils.py
   ```
-- `vtkhdf/testing/test_export.py`: full round trip in YADE. It runs 36 spheres settling in a box of 5 walls, exports them with display groups, checks the file (blocks, interactions), imports it into a reset scene, compares every body, runs 1000 steps and exports again. It prints `TEST PASSED` or `TEST FAILED` (exit code 1). The files are written to the temp directory.
+- `vtkhdf/testing/test_export.py`: full round trip in YADE. It runs 36 spheres settling in a box of 5 walls, with two materials with non-default values. It exports them with display groups, checks the file (blocks, quaternion convention, materials, interactions), imports it into a reset scene, compares every body and every material field, runs 1000 steps and exports again. It also checks that a file with a missing material field is rejected. It prints `TEST PASSED` or `TEST FAILED` (exit code 1). The files are written to the temp directory.
   ```bash
   yadedaily -n -x implementation/vtkhdf/testing/test_export.py
   ```
@@ -128,6 +148,7 @@ To use this framework with another DEM code (e.g., LIGGGHTS, DEMETER, etc.), fol
      - `_shape_type`: an expression for the body's shape type, and `_shape_groups`: shape type -> group name in `/ONDEM/Bodies`;
      - `_extra_shapes`: fields of shapes that are not in the schema yet (e.g. walls);
      - `_interaction_type`: an expression for the interaction type (the group name in `/ONDEM/Interactions`, written snake_case);
+     - `_material_classes`: the schema classes whose fields are written for each material, and `_material_classes_note`: written as the `provisional` attribute;
      - `_interaction_geometry`, `_extra_interaction_attributes`, `_extra_material_attributes`: extra fields not in the schema.
    - `display_group` and `display_group_names` map to the helpers `_display_group(b)` and `_display_group_names()`, which take their values from the `export_vtkhdf` arguments. Keep them as they are.
    - Add helper functions if needed (like `_get_gravity()` in YADE).

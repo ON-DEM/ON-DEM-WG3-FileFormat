@@ -103,23 +103,41 @@ def _read_scene(f):
     return time, dt, _v3(grav), names
 
 
+# Material fields a FrictMat needs (provisional mapping, see implementation/README.md):
+# base_material.id, density; hertz_elastic.young_modulus, poisson_ratio;
+# frictional_3D.shear_friction = tan(frictionAngle)
+_FRICTMAT_FIELDS = ["id", "density", "young_modulus", "poisson_ratio", "shear_friction"]
+
+
 def _read_materials(f):
     """
     Reconstruct YADE materials from /ONDEM/Materials/<id>/ groups.
     Returns a dict  {stored_mat_id (int) -> yade_material_index}.
+
+    Every field of _FRICTMAT_FIELDS must be present; there are no defaults.
+    Raises ValueError naming the material and the missing fields, or if the
+    material is not a FrictMat.
     """
     mat_grp = f["ONDEM/Materials"]
     id_map  = {}   # stored id -> O.materials index
 
     for key in mat_grp:
         g   = mat_grp[key]
-        mid = int(g["id"][()])
+        mtype = g["material_type"][()].decode() if "material_type" in g else None
+        if mtype != "FrictMat":
+            raise ValueError(f"[import] /ONDEM/Materials/{key}: material_type {mtype!r} is not supported "
+                             f"(this importer only rebuilds FrictMat)")
+        missing = [k for k in _FRICTMAT_FIELDS if k not in g]
+        if missing:
+            raise ValueError(f"[import] /ONDEM/Materials/{key}: missing field(s) {missing}; "
+                             f"a FrictMat needs {_FRICTMAT_FIELDS}")
 
-        density  = float(g["density"][()])     if "density"  in g else 2600.0
-        young    = float(g["young"][()])       if "young"    in g else 1e7
-        poisson  = float(g["poisson"][()])     if "poisson"  in g else 0.3
-        fric_rad = float(g["friction_angle_rad"][()])  if "friction_angle_rad" in g else 0.5
-        label    = g["label"][()].decode()     if "label"    in g else f"mat_{mid}"
+        mid      = int(g["id"][()])
+        density  = float(g["density"][()])
+        young    = float(g["young_modulus"][()])
+        poisson  = float(g["poisson_ratio"][()])
+        fric_rad = float(np.arctan(float(g["shear_friction"][()])))
+        label    = g["label"][()].decode()     if "label"    in g else ""
 
         yade_idx = O.materials.append(
             FrictMat(
