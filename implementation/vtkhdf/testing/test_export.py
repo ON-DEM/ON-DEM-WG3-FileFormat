@@ -7,9 +7,12 @@ Run with:  yadedaily test_export.py
 
 from yade import pack, utils, O, Vector3
 import sys, os
-sys.path.insert(0, '.')
+# exporter and hdf5_utils live in implementation/vtkhdf, one level up.
+# Under "yadedaily -x" __file__ is the yadedaily binary; the script path is sys.argv[0].
+HERE = os.path.dirname(os.path.abspath(sys.argv[0]))
+sys.path.insert(0, os.path.dirname(HERE))
 
-from export_yade_vtkhdf_generated import export_vtkhdf
+from export_yade_vtkhdf import export_vtkhdf
 
 # ---- Material ----
 mat = O.materials.append(
