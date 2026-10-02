@@ -44,7 +44,7 @@ Rules:
 - **Display groups.** `base_body.display_group` (optional, default 0) is an index into `scene.display_group_names` (default `['all']`). It is not written as a dataset: a body's display group is the index of the name of the block it is in. Display groups are only relevant for visualisation.
 - **Geometry is stored once.** Body positions are only in the blocks (`Points`, float64). `/ONDEM/Bodies` holds no positions.
 - **Restart reads the whole file.** The blocks and `/ONDEM/Bodies` are joined on `body_id`; every body must be in both.
-- **Quaternions** are stored scalar first, (w, x, y, z), and the dataset has the attribute `order = "wxyz"`. The identity (no rotation) is (1, 0, 0, 0), and q rotates body axes onto global axes: v_global = q v_body q⁻¹. This convention is provisional, to be confirmed by Bruno (see `base_state.orientation`). YADE indexes its quaternions as (x, y, z, w), so the YADE mapping reorders them on export and the importer reorders them back.
+- **Quaternions** are stored scalar first, (w, x, y, z), and the dataset has the attribute `order = "wxyz"`. The identity (no rotation) is (1, 0, 0, 0), and q converts body-frame coordinates to global-frame coordinates: v_global = q v_body q⁻¹ (equivalently, it rotates the global axes onto the body axes). This convention is provisional, to be confirmed by Bruno (see `base_state.orientation`). YADE indexes its quaternions as (x, y, z, w), so the YADE mapping reorders them on export and the importer reorders them back.
 - **snake_case** for every name in the file. Groups whose content is not in the schema yet (`wall`, `facet`, `other`, the interaction groups) are not normative.
 
 ### Which body field is where (provisional)
