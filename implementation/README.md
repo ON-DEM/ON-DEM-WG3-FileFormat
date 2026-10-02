@@ -10,29 +10,26 @@ One file holds one timestep and everything needed to restart from it. The same f
 
 ### File layout
 
-A file has two top-level groups. `/VTKHDF` is the part ParaView reads (the name is mandatory; ParaView ignores everything else). `/ONDEM` holds the rest of the simulation state.
+A file has two top-level groups. `/VTKHDF` is the part ParaView reads (the name is mandatory; ParaView ignores everything else). It holds every per-body field. `/ONDEM` holds the scene, the materials and the interactions.
 
 ```
 /VTKHDF                          Type = "MultiBlockDataSet", Version = (2, 5)
   <group name>/                  one PolyData block per display group
     Type = "PolyData", Version = (2, 5)
     NumberOfPoints   (1,)
-    Points           (N,3) float64   body positions (stored only here)
+    Points           (N,3) float64   body positions
     Vertices/                         one vertex cell per point
     Lines/  Polygons/  Strips/        empty
-    PointData/
-      body_id        (N,)  int64     joins the block to /ONDEM
-      radius, velocity, angular_velocity, orientation   (see table below)
+    PointData/                        every per-body field, one value per body (see table below)
+      body_id        (N,)  int64     interactions refer to bodies through it
+      shape_type     (N,)  int64     index into /ONDEM/Scene/shape_names
+      ...
   Assembly/
     <group name>  -> /VTKHDF/<group name>   (HDF5 soft link)
 /ONDEM
-  Scene/                         attributes: time, timestep, iteration (provisional)
-                                 datasets: gravity, units, display_group_names
+  Scene/                         attributes: time, timestep, iteration
+                                 datasets: gravity, units, display_group_names, shape_names
   Materials/<material id>/       one group per material, one scalar dataset per field
-  Bodies/<shape group>/          sphere, box, polyhedron, wall, facet, clump, other
-    attribute count
-    body_id          (n,)  int64     the join key
-    ...                              per-body fields not in the blocks (see table)
   Interactions/<type>/           one group per interaction type (snake_case)
     attribute count
     id1, id2, normal, normal_force, shear_force, kn, ks, friction_coefficient, ...
@@ -42,52 +39,57 @@ Rules:
 
 - **One block per display group.** Every name in `scene.display_group_names` gets a block, also when no body is in that group, so the block tree is the same in every file of a series. Blocks are plain groups directly under `/VTKHDF`; the soft links in `/VTKHDF/Assembly` give the order and the names shown in ParaView. Groups under `/VTKHDF` are created with creation-order tracking, which VTK's reader needs.
 - **Display groups.** `base_body.display_group` (optional, default 0) is an index into `scene.display_group_names` (default `['all']`). It is not written as a dataset: a body's display group is the index of the name of the block it is in. Display groups are only relevant for visualisation.
-- **Geometry is stored once.** Body positions are only in the blocks (`Points`, float64). `/ONDEM/Bodies` holds no positions.
-- **Restart reads the whole file.** The blocks and `/ONDEM/Bodies` are joined on `body_id`; every body must be in both.
-- **Quaternions** are stored scalar first, (w, x, y, z), and the dataset has the attribute `order = "wxyz"`. The identity (no rotation) is (1, 0, 0, 0), and q converts body-frame coordinates to global-frame coordinates: v_global = q v_body q⁻¹ (equivalently, it rotates the global axes onto the body axes). This convention was decided on 2 October 2026 (see `base_state.orientation`). YADE indexes its quaternions as (x, y, z, w), so the YADE mapping reorders them on export and the importer reorders them back.
-- **snake_case** for every name in the file. Groups whose content is not in the schema yet (`wall`, `facet`, `clump`, `other`, the interaction groups) are not normative.
-- **`normal_force` is positive in traction**, as the schema says. Until 2026-10-02 the YADE exporter wrote it positive in compression. A contact in compression now has a negative `normal_force`.
+- **All per-body data in the blocks** (decision of 2 October 2026). Every block carries the same arrays, also an empty block (0 rows). A field is written when it applies to every body or when at least one body has a value. Where a field does not apply to a body, floats are **NaN** and integers (and booleans) are **−1**: for example, the `radius` of a wall, or the `wall_axis` of a sphere.
+- **Geometry is stored once.** Body positions are only the block `Points`, in float64.
+- **Shapes by name.** `shape_type` is an index into `scene.shape_names`. **Readers must map shapes by name from the file's `shape_names`, never by a fixed index**, because the list will change with the shapes proposal (planes, facets, meshes). The YADE exporter writes the list `sphere, box, polyhedron, clump, wall, facet, other`; `other` marks a shape the format does not support yet.
+- **Restart reads the whole file:** the blocks for the bodies, `/ONDEM` for the scene, materials and contacts.
+- **Quaternions** are stored scalar first, (w, x, y, z), and the dataset has the attribute `order = "wxyz"`. The identity (no rotation) is (1, 0, 0, 0), and q converts body-frame coordinates to global-frame coordinates: v_global = q v_body q⁻¹ (equivalently, it rotates the global axes onto the body axes). Decided on 2 October 2026 (see `base_state.orientation`). YADE indexes its quaternions as (x, y, z, w), so the YADE mapping reorders them on export and the importer reorders them back.
+- **snake_case** for every name in the file. Fields of shapes that are not in the schema yet (`wall_*`, `facet_*`) and the interaction group names are not normative.
+- **`normal_force` is positive in traction**, as the schema says. Until 2026-10-02 the YADE exporter wrote it positive in compression. A contact in compression has a negative `normal_force`.
 
-### Which body field is where (provisional)
+### Per-body fields (all in the blocks)
 
-The split between the blocks and `/ONDEM` is an open point; this is the current proposal. It is set in one place: `_BLOCK_FIELDS` in `vtkhdf/codegen_yade.py`.
-
-| Field | Where | Notes |
+| Field | Status | Notes |
 |---|---|---|
-| `position` | `/VTKHDF/<group>/Points` | float64, stored only here |
-| `body_id` | `PointData/body_id` and `/ONDEM/Bodies/<shape>/body_id` | int64, the join key |
-| `display_group` | not a dataset | index of the block's name in `display_group_names` |
-| `radius` | `PointData` | NaN for bodies that are not spheres |
-| `velocity` | `PointData` | |
-| `angular_velocity` | `PointData` | global frame |
-| `orientation` | `PointData` | (w, x, y, z), attribute `order = "wxyz"` |
-| `material_id`, `clump_id` | `/ONDEM/Bodies/<shape>/` | |
-| `mass`, `volume` | `/ONDEM/Bodies/<shape>/` | |
-| `inertia` | `/ONDEM/Bodies/<shape>/` | 3x3, flattened row-major, shape (n, 9) |
-| `temperature`, `liquid_film_volume` | `/ONDEM/Bodies/<shape>/` | only written if the code provides them |
-| box `dimensions` | `/ONDEM/Bodies/box/` | |
-| wall `axis`, `sense` | `/ONDEM/Bodies/wall/` | not in the schema yet |
-| facet `vertices`, `normal` | `/ONDEM/Bodies/facet/` | not in the schema yet |
-| `blocked_dofs`, `group_mask`, `is_damped`, `angular_momentum`, `density_scaling` | `/ONDEM/Bodies/<shape>/` | provisional extras, see "Provisional extras" below |
+| `position` | schema | the block `Points`, float64 |
+| `body_id` | schema | int64 |
+| `display_group` | schema | not a dataset: the index of the block's name in `display_group_names` |
+| `shape_type` | schema | index into `scene.shape_names`; map by name |
+| `material_id`, `clump_id` | schema | `clump_id` is the clump body's `body_id` for a member, −1 otherwise (also for the clump body itself); clump bodies have no material (−1) |
+| `velocity`, `angular_velocity` | schema | angular velocity in the global frame |
+| `orientation` | schema | (w, x, y, z), attribute `order = "wxyz"` |
+| `mass`, `volume` | schema | |
+| `inertia` | schema | 3x3, flattened row-major, shape (N, 9) |
+| `blocked_dofs` | schema | bitmask: bits 0–2 translations x, y, z, bits 3–5 rotations x, y, z; 0 free, 63 fixed |
+| `clump_relative_position`, `clump_relative_orientation` | schema | a member's pose relative to its clump body; NaN for bodies that are not members |
+| `temperature`, `liquid_film_volume` | schema | only written if the code provides them |
+| `radius` | schema (`sphere`) | NaN for other shapes |
+| `dimensions` | schema (`box`) | full edge lengths; NaN for other shapes |
+| `wall_axis`, `wall_sense` | not normative | YADE `Wall`; −1 for other shapes; replaced once the schema has a plane shape |
+| `facet_vertices`, `facet_normal` | not normative | YADE `Facet`; NaN for other shapes; replaced once the schema has facets/meshes |
+| `group_mask`, `is_damped`, `angular_momentum`, `density_scaling` | **provisional** | not decided, see "Open questions" |
 
-### Materials (provisional)
+`polyhedron.vertices` is not written: its length differs per body, which is part of the shapes proposal.
 
-`/ONDEM/Materials/<id>/` holds one scalar dataset per field, named as in the schema. Each group has the attribute `schema_classes` (the schema classes its fields come from) and, while the choice is open, `provisional`.
+### Materials
 
-YADE's `FrictMat` does not match any schema class yet. It is written for now as `base_material` + `hertz_elastic` + `frictional_3D`:
+`/ONDEM/Materials/<id>/` holds one scalar dataset per field, named as in the schema; the attribute `schema_classes` names the schema class. YADE's `FrictMat` is written as `linear_elastic_frictional_3D` (decided on 2 October 2026):
 
-| Schema field | YADE `FrictMat` | Note |
-|---|---|---|
-| `base_material.id` | `id` | |
-| `base_material.density` | `density` | |
-| `hertz_elastic.young_modulus` | `young` | in YADE a contact modulus: kn = 2 E₁R₁ E₂R₂ / (E₁R₁ + E₂R₂) |
-| `hertz_elastic.poisson_ratio` | `poisson` | in YADE the stiffness ratio ks/kn, not a Poisson's ratio |
-| `frictional_3D.shear_friction` | tan(`frictionAngle`) | |
-| `frictional_3D.shear_damping` | none | mandatory in the schema, not written: FrictMat has no shear damping |
+| Schema field | YADE `FrictMat` |
+|---|---|
+| `id`, `density` | `id`, `density` |
+| `normal_stiffness` | `young` |
+| `shear_stiffness` | `young` × `poisson` |
+| `shear_friction` | tan(`frictionAngle`) |
+| `shear_damping` | 0 (FrictMat has none) |
 
-`label` and `material_type` are written as extra, YADE-specific datasets. The importer rebuilds only `FrictMat`. It needs the five fields above and stops with an error that names the material and the missing field; there are no default values.
+On import: `young` = `normal_stiffness`, `poisson` = `shear_stiffness` / `normal_stiffness`, `frictionAngle` = atan(`shear_friction`). The importer refuses a missing field and `shear_damping` ≠ 0; there are no default values.
 
-**To settle with Bruno:** which schema class a linear contact law like FrictMat belongs to. FrictMat is a linear law, but `young_modulus` and `poisson_ratio` are in `hertz_elastic`. One option is a linear class with a contact modulus and a stiffness ratio. Another is to write `normal_stiffness`/`shear_stiffness`, but YADE computes those per contact, not per material. Also open: what to write for `shear_damping` when a code has none.
+`label`, `material_type` and `yade_poisson` are written as non-normative YADE extras. `yade_poisson` is the exact `poisson`: for about 12 % of value pairs, `young` × `poisson` / `young` comes back 1 ulp off, and contacts formed after a restart would then get a slightly different `ks`. The importer uses `yade_poisson` when present and checks that it agrees with the quotient to round-off.
+
+**Notes, waiting for a discussion with the other codes:**
+- `normal_stiffness` and `shear_stiffness` hold a **material stiffness** (YADE's Young's modulus, force per length squared), while the schema text in `materials.py` says force per length. The material carries a material stiffness; the stiffness of each contact is computed from it and from the particles' size and shape, and stays stored per interaction (`kn`, `ks`).
+- `shear_damping` is to be removed from `frictional_3D`. Until then, YADE files write 0.
 
 ### Restart: what is restored
 
@@ -97,9 +99,9 @@ The importer reads and checks the whole file before it creates anything. An unsu
 
 | What | From | How |
 |---|---|---|
-| Spheres, walls, boxes | blocks + `/ONDEM/Bodies/<shape>/` | appended in increasing `body_id` (same ids in an empty scene, otherwise see `id_map`) |
-| Body state | blocks + `/ONDEM/Bodies` | position, velocity, angular velocity, orientation, mass, inertia, and the provisional extras below |
-| Clumps | `/ONDEM/Bodies/clump/` + members' `clump_id` | members first, then `O.bodies.clump(members)`; see the note below |
+| Spheres, walls, boxes | blocks | appended in increasing `body_id` (same ids in an empty scene, otherwise see `id_map`) |
+| Body state | blocks | position, velocity, angular velocity, orientation, mass, inertia, blocked DOFs, and the provisional fields |
+| Clumps | blocks (shape `clump`, members' `clump_id` and relative poses) | members first, then `O.bodies.clump(members)`; see the note below |
 | Materials | `/ONDEM/Materials` | `FrictMat` only, see above |
 | Contacts | `/ONDEM/Interactions/<type>/` | every real contact is rebuilt with `utils.createInteraction` and gets its stored history: `normal`, `shear_force`, `normal_force`, `kn`, `ks`, `friction_coefficient`, contact point, reference radii, frictional dissipation |
 | `dt`, gravity | `/ONDEM/Scene` | gravity is set on the `NewtonIntegrator` |
@@ -108,11 +110,15 @@ The importer reads and checks the whole file before it creates anything. An unsu
 
 Contact types that can be restored: `(ScGeom, FrictPhys)`, as used for example by `Law2_ScGeom_FrictPhys_CundallStrack`. Other types raise an error. If the engines create another contact type than the one in the file, the importer stops with an error that says the engines differ.
 
-The stored contact **normal is history too**. On each step the shear force is rotated from the previous normal to the new one, so the importer writes the stored normal back after creating the contact. Without that, the shear force is off by about 1e-6 relative after one step. With it, a restart without clumps continues **bit-identically** (`test_restart.py`: difference 0 after 1 and after 2000 steps).
+The stored contact **normal is history** (decided on 2 October 2026: the contact normal of the last force evaluation). On each step the shear force is rotated from the previous normal to the new one, so the importer writes the stored normal back after creating the contact. Without that, the shear force is off by about 1e-6 relative after one step. With it, a restart without clumps continues **bit-identically**, also for a contact that forms after the restart (`test_restart.py`: difference 0 after 1 and after 2000 steps).
 
-**Clumps.** YADE recomputes a clump's frame (centre of mass, principal axes) and its members' relative positions and orientations from the members' positions when the clump is built. The relative poses cannot be set from Python. The importer keeps the recomputed frame, so members and clump stay consistent, and checks it against the file: the centre of mass must agree, and the stored inertia, rotated into the new frame, must be diagonal there. Mass, inertia, velocities and angular momentum come from the file. A restart with clumps therefore starts with round-off differences, about 1e-13 relative after one step. The granular dynamics amplify them, to about 5e-9 after 2000 steps in `test_restart.py`. It is not bit-identical.
+**Clumps.** YADE recomputes a clump's frame (centre of mass, principal axes) and its members' relative positions and orientations from the members' poses when the clump is built; the relative poses cannot be set from Python. The importer keeps the recomputed frame, so members and clump stay consistent, and checks it against the file:
+- the centre of mass must agree, and the stored inertia, rotated into the new frame, must be diagonal there (otherwise an error);
+- each member's stored relative pose, mapped into the new frame, is compared with the one YADE recomputed. A difference beyond round-off (1e-10 of the clump size, or 1e-10 rad) is a **warning** naming clump and member, returned in `r["clump_warnings"]`; the clump is still built.
 
-**Time and iteration.** `O.time` and `O.iter` cannot be set in YADE. The importer stores the offsets (file value minus current value) in `O.tags["ondem_time_offset"]` and `O.tags["ondem_iteration_offset"]`, and the exporter adds them, so the file series continues across a restart. **Engines that depend on `O.time` or `O.iter` see them start again from zero after a restart**, even though the file series stays continuous: PyRunner `iterPeriod`/`virtPeriod`, time-dependent boundary motion, recorders, anything else that reads `O.time` or `O.iter`. Scripts have to add the offsets themselves (`r["time_offset"]`, `r["iteration_offset"]`).
+Mass, inertia, velocities and angular momentum come from the file. A restart with clumps therefore starts with round-off differences, about 1e-13 relative after one step, which the granular dynamics amplify. In `test_restart.py` (a quiet packing) they reach about 5e-9 after 2000 steps; the confirmed tolerance is 1e-12 after one step and 1e-7 after 2000 steps. With an impact on a clump after the restart, they grew to about 1e-5 in a trial run. The tolerance holds for the quiet scene of the test, not for every scene.
+
+**Time and iteration.** `O.time` and `O.iter` cannot be set in YADE. The importer stores the offsets (file value minus current value) in `O.tags["ondem_time_offset"]` and `O.tags["ondem_iteration_offset"]`, and the exporter adds them, so the file series continues across a restart (`scene.time`, `scene.iteration`). **Engines that depend on `O.time` or `O.iter` see them start again from zero after a restart**, even though the file series stays continuous: PyRunner `iterPeriod`/`virtPeriod`, time-dependent boundary motion, recorders, anything else that reads `O.time` or `O.iter`. Scripts have to add the offsets themselves (`r["time_offset"]`, `r["iteration_offset"]`).
 
 ### What a restart cannot restore
 
@@ -127,42 +133,27 @@ These do not come from the file. The script must set them up the same way as in 
 - `refPos`, `refOri` (reference pose for output only, no effect on the dynamics);
 - periodic cells: the exporter refuses a periodic scene (`O.periodic`), because the cell is not written yet.
 
-### Provisional extras and questions for Bruno
+### Open questions
 
-To make the restart complete now, the files carry these provisional, non-normative fields. The schema has no field for them yet. Each one is a question for Bruno, and the names will change if the schema chooses others.
+Not decided yet; the provisional fields keep their current names until they are:
 
-| Field | Where | YADE |
-|---|---|---|
-| `blocked_dofs` (string, e.g. `"xyz"`, `"xyzXYZ"`) | `/ONDEM/Bodies/<shape>/` | `state.blockedDOFs` |
-| `group_mask` (int) | `/ONDEM/Bodies/<shape>/` | `groupMask`: which body pairs may interact |
-| `is_damped` (bool) | `/ONDEM/Bodies/<shape>/` | `state.isDamped` |
-| `angular_momentum` (vector) | `/ONDEM/Bodies/<shape>/` | `state.angMom` |
-| `density_scaling` (float, −1 = not used) | `/ONDEM/Bodies/<shape>/` | `state.densityScaling` |
-| shape group `clump` | `/ONDEM/Bodies/clump/` | the clump body |
-| `iteration` (int attribute) | `/ONDEM/Scene` | `O.iter` (+ offset) |
-| `frictional_dissipation` | `/ONDEM/Interactions/<type>/` | `phys.frictDissip` |
-| `contact_point`, `overlap`, `reference_radius_1/2`, `geom_type`, `phys_type` | `/ONDEM/Interactions/<type>/` | contact geometry and types |
+1. **Collision mask** (`group_mask`, YADE `groupMask`): which body pairs may interact. In the format, or code-specific?
+2. **Numerical damping per body** (`is_damped`) and **density scaling** (`density_scaling`, −1 = not used): in the format, or code-specific extras?
+3. **Angular momentum** (`angular_momentum`) for aspherical bodies and clumps: stored, or always derived from inertia, orientation and angular velocity?
+4. **Shapes: planes (YADE `Wall`), facets, meshes, polyhedra.** Shape classes and the layout of variable-length data (vertex lists): a written proposal is being prepared for review before any code.
+5. **Contact geometry**: should `contact_point`, `overlap` and the reference radii become schema fields? Should `frictional_dissipation` and energy totals be part of the format?
+6. **Periodic cell**: where `imposed_conditions.periodic_box` goes in the file.
+7. **Material stiffness units and `shear_damping`** (see "Materials"): to discuss with the other codes.
 
-Questions for Bruno (none of them is decided here):
-
-1. **Blocked degrees of freedom.** Should `base_state` get `blocked_dofs` (six flags: translations x, y, z and rotations x, y, z)? Or a `fixed` boolean?
-2. **Collision mask.** Should `base_body` get `collision_mask`, saying which body pairs may interact (YADE `groupMask`)?
-3. **Angular momentum.** For aspherical bodies and clumps: should `base_state` store `angular_momentum`, or is it always derived from inertia, orientation and angular velocity?
-4. **Iteration.** Should `scene` get `iteration`, next to `time`?
-5. **Clumps.** A shape class for the clump body, with members found through `clump_id`? Should the members' relative positions and orientations be stored?
-6. **Walls/planes.** A shape class for infinite planes (axis + sense, or normal + point)? Today they are the non-normative group `wall`.
-7. **Facets/mesh and polyhedra.** What layout should hold vertex lists of different lengths per body? (The mesh shape is already open; `polyhedron.vertices` is untyped.)
-8. **Contact normal as history.** Can `normal.normal` be defined as "the contact normal of the last force evaluation", since the incremental shear force is rotated from it? Should `contact_point`, `overlap` and the reference radii become schema fields?
-9. **Dissipation.** Are accumulated quantities part of the format: frictional dissipation per contact, energy totals?
-10. **Periodic cell.** Where does `imposed_conditions.periodic_box` go in the file: `/ONDEM/Scene`, or a group of its own?
-11. **Numerical settings per body.** Do per-body numerical damping on/off and density scaling belong in the format, or are they code-specific extras?
+Decided on 2 October 2026 and implemented: the quaternion convention, `display_group_names`, FrictMat → `linear_elastic_frictional_3D`, all per-body data in the blocks, `shape_type` / `shape_names`, `blocked_dofs` as a bitmask, the `clump` shape with the members' relative poses, `scene.iteration`, and the meaning of the contact normal.
 
 ### Current limits
 
-- **Non-sphere bodies appear as points.** Every body is one point (its position) in its block. Walls, facets, boxes and clump bodies are shown as points until the schema has a mesh/facet shape. Contacts are not visible in ParaView yet either: they stay in `/ONDEM/Interactions`.
+- **Non-sphere bodies appear as points.** Every body is one point (its position) in its block. Walls, facets, boxes and clump bodies are shown as points until the schema has surface shapes. Contacts are not visible in ParaView yet either: they stay in `/ONDEM/Interactions`.
 - The importer restores spheres, walls, boxes and clumps. Facets, polyhedra and other shapes are refused with an error naming the bodies.
 - The importer rebuilds `FrictMat` materials and `(ScGeom, FrictPhys)` contacts only.
 - A restart with clumps is not bit-identical (see above).
+- Files written in the layout before 2 October 2026 (bodies in `/ONDEM/Bodies`) are refused with an error.
 
 ### For YADE Users
 
@@ -196,11 +187,11 @@ Bodies are appended in increasing `body_id`. Into an empty scene YADE gives them
 
 #### Tests
 
-- `vtkhdf/testing/test_multiblock_utils.py`: the code-agnostic multiblock helpers. Needs only `numpy` and `h5py`; if the `vtk` Python package is installed, it also reads the file back with `vtkHDFReader`.
+- `vtkhdf/testing/test_multiblock_utils.py`: the code-agnostic multiblock helpers, and the NaN / −1 conventions. Needs only `numpy` and `h5py`; if the `vtk` Python package is installed, it also reads the file back with `vtkHDFReader`.
   ```bash
   python3 implementation/vtkhdf/testing/test_multiblock_utils.py
   ```
-- `vtkhdf/testing/test_export.py`: full round trip in YADE. It runs 36 spheres settling in a box of 5 walls, with two materials with non-default values. It exports them with display groups, checks the file (blocks, quaternion convention, materials, interactions), imports it into a reset scene, compares every body and every material field, runs 1000 steps and exports again. It also checks that a file with a missing material field is rejected. It prints `TEST PASSED` or `TEST FAILED` (exit code 1). The files are written to the temp directory.
+- `vtkhdf/testing/test_export.py`: full round trip in YADE. 36 spheres settle in a box of 5 walls and a fixed box, with two materials with non-default values (one of them a pair whose `young` × `poisson` / `young` is 1 ulp off). It exports them with display groups and checks the file: `/ONDEM` holds only Scene, Materials and Interactions; every block has the same arrays; shapes by name; NaN / −1 where a field does not apply; `blocked_dofs`; quaternion convention; materials; interactions. It then imports into a reset scene, compares every body and every material field (`young` and `poisson` exactly), runs 1000 steps and exports again. It also checks that a missing material field, `shear_damping` ≠ 0, missing engines and an unsupported contact type are rejected. It prints `TEST PASSED` or `TEST FAILED` (exit code 1). The files are written to the temp directory.
   ```bash
   yadedaily -n -x implementation/vtkhdf/testing/test_export.py
   ```
@@ -209,8 +200,8 @@ Bodies are appended in increasing `body_id`. Into an empty scene YADE gives them
   - Run A settles the box, tilts gravity so the contacts carry shear load, exports, and runs 2000 more steps. Run B imports into a fresh scene and runs 2000 steps.
   - At the restart instant the contacts and their restored values must be equal. After 1 step and after 2000 steps, positions, velocities and per-contact normal and shear forces must agree within the stated tolerance.
   - Two scenarios:
-    - without clumps the restart must be bit-identical (tolerance 1e-10);
-    - with clumps the tolerance is 1e-12 after 1 step and 1e-7 after 2000 steps (see "Clumps" above).
+    - without clumps, with a sphere that lands after the restart (a new contact whose `ks` comes from the restored materials): the restart must be bit-identical (tolerance 1e-10);
+    - with clumps (quiet packing): 1e-12 after 1 step and 1e-7 after 2000 steps (confirmed 2026-10-02); no clump warning on import, and a corrupted relative pose must give one.
   - Negative controls (shear forces zeroed, stored normals ignored) must exceed the tolerance.
   - Needs 1 OpenMP thread, which is the yadedaily default.
   ```bash
@@ -224,17 +215,17 @@ To use this framework with another DEM code (e.g., LIGGGHTS, DEMETER, etc.), fol
 1. **Create a Mapping File**: Define a JSON file that maps ON-DEM schema fields to your DEM code's API expressions. Use `yade_mapping.json` as a template.
 
    - Keys are schema class names (`base_body`, `base_state`, `sphere`, `base_interaction`, ...) holding `field: expression` pairs. If a field is not found under its class, the first class entry with that field name is used.
-   - Values are Python expressions that access the data in your DEM code's context: `b` is a body, `i` an interaction, `mat` a material.
+   - Values are Python expressions that access the data in your DEM code's context: `b` is a body, `i` an interaction, `mat` a material. An expression may return `None` for a body it does not apply to (written as NaN / −1).
    - Keys starting with `_` are not schema classes:
      - `_collections`: expressions for the list of bodies and the list of interactions;
-     - `_shape_type`: an expression for the body's shape type, and `_shape_groups`: shape type -> group name in `/ONDEM/Bodies`;
-     - `_extra_shapes`: fields of shapes that are not in the schema yet (e.g. walls);
+     - `_shape_type`: an expression for the body's shape type in the code, `_shape_groups`: code shape type -> schema shape name, and `_shape_names`: the list written as `scene.shape_names`;
+     - `_extra_shapes`: fields of shapes that are not in the schema yet (written as `<shape>_<field>`, e.g. `wall_axis`);
      - `_interaction_type`: an expression for the interaction type (the group name in `/ONDEM/Interactions`, written snake_case);
-     - `_material_classes`: the schema classes whose fields are written for each material, and `_material_classes_note`: written as the `provisional` attribute;
-     - `_extra_body_fields`, `_extra_scene_fields`: provisional per-body and scene fields that the schema does not have yet (see "Provisional extras");
+     - `_material_classes`: the schema classes whose fields (inherited ones included) are written for each material;
+     - `_extra_body_fields`: provisional per-body fields that are not decided yet;
      - `_refuse_if`: `{message: expression}`; the exporter raises `ValueError` with the message, and writes no file, when the expression is true (YADE: periodic scenes);
      - `_interaction_geometry`, `_extra_interaction_attributes`, `_extra_material_attributes`: extra fields not in the schema.
-   - `display_group` and `display_group_names` map to the helpers `_display_group(b)` and `_display_group_names()`, which take their values from the `export_vtkhdf` arguments. Keep them as they are.
+   - `display_group`, `display_group_names`, `shape_type` and `shape_names` map to the helpers `_display_group(b)`, `_display_group_names()`, `_shape_type_index(b)` and `_shape_names()`. Keep them as they are.
    - Add helper functions if needed (like `_get_gravity()` in YADE).
 
 2. **Run the Code Generator**: Use `codegen_yade.py` (rename it to something generic like `codegen_dem.py` if desired) to generate a custom exporter.
@@ -254,7 +245,7 @@ If you implement support for another DEM code, consider contributing it back to 
 ### Files Overview
 
 - `schema_parser.py`: Parses the ON-DEM schema from Python files.
-- `codegen_yade.py`: Code generator for YADE (adapt for other codes). Holds the provisional split of body fields (`_BLOCK_FIELDS`).
+- `codegen_yade.py`: Code generator for YADE (adapt for other codes).
 - `yade_mapping.json`: YADE-specific field mappings.
 - `hdf5_utils.py`: Code-agnostic HDF5 reading and writing, including the VTKHDF multiblock helpers.
 - `export_yade_vtkhdf.py`: YADE exporter, generated by `codegen_yade.py` (do not edit by hand).
