@@ -89,21 +89,15 @@
     "vertices": "[[v[0],v[1],v[2]] for v in b.shape.vertices]"
   },
 
-  "_material_classes": ["base_material", "hertz_elastic", "frictional_3D"],
-  "_material_classes_note": "the schema class of YADE FrictMat is open; poisson_ratio holds YADE's ks/kn ratio and young_modulus its contact modulus (see implementation/README.md)",
+  "_material_classes": ["linear_elastic_frictional_3D"],
 
-  "base_material": {
-    "id":      "mat.id",
-    "density": "mat.density"
-  },
-
-  "hertz_elastic": {
-    "young_modulus": "mat.young",
-    "poisson_ratio": "mat.poisson"
-  },
-
-  "frictional_3D": {
-    "shear_friction": "float(np.tan(mat.frictionAngle))"
+  "linear_elastic_frictional_3D": {
+    "id":               "mat.id",
+    "density":          "mat.density",
+    "normal_stiffness": "mat.young",
+    "shear_stiffness":  "mat.young * mat.poisson",
+    "shear_friction":   "float(np.tan(mat.frictionAngle))",
+    "shear_damping":    "0.0"
   },
 
   "_interaction_type": "type(i.phys).__name__",
@@ -150,7 +144,8 @@
 
   "_extra_material_attributes": {
     "label":              "mat.label if mat.label else ''",
-    "material_type":      "type(mat).__name__"
+    "material_type":      "type(mat).__name__",
+    "yade_poisson":       "mat.poisson"
   },
 
   "_extra_interaction_attributes": {

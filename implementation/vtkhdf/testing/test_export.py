@@ -28,7 +28,8 @@ import h5py
 
 # ---- Materials: non-default values, so a silent default cannot pass ----
 mat = O.materials.append(
-    FrictMat(density=2450, young=3.7e7, poisson=0.27,
+    # young * poisson / young != poisson for this pair (1 ulp): only yade_poisson restores it exactly
+    FrictMat(density=2450, young=37123456.789, poisson=0.24,
              frictionAngle=radians(23), label="glass")
 )
 wall_mat = O.materials.append(
@@ -178,15 +179,21 @@ with h5py.File(out, "r") as f:
         ids = set(int(v) for v in ig[t]["id1"][:]) | set(int(v) for v in ig[t]["id2"][:])
         check(ids <= block_ids, f"interaction ids not in the blocks: {sorted(ids - block_ids)}")
         check(t == t.lower(), f"interaction group name {t!r} is not snake_case")
-    # materials: schema field names, provisional class tag
+    # materials: FrictMat -> linear_elastic_frictional_3D (decision 10)
     for key, g in f["ONDEM/Materials"].items():
-        for fld in ("id", "density", "young_modulus", "poisson_ratio", "shear_friction"):
+        for fld in ("id", "density", "normal_stiffness", "shear_stiffness", "shear_friction", "shear_damping", "yade_poisson"):
             check(fld in g, f"material {key}: field {fld} missing")
-        check(g.attrs.get("schema_classes") == "base_material, hertz_elastic, frictional_3D", f"material {key}: schema_classes attribute")
-        check("provisional" in g.attrs, f"material {key}: provisional attribute")
+        check(g.attrs.get("schema_classes") == "linear_elastic_frictional_3D", f"material {key}: schema_classes attribute")
+        check("provisional" not in g.attrs, f"material {key}: no provisional attribute any more")
         ym = O.materials[int(g["id"][()])]
-        check(g["young_modulus"][()] == ym.young and g["poisson_ratio"][()] == ym.poisson, f"material {key}: young/poisson values")
+        check(g["normal_stiffness"][()] == ym.young, f"material {key}: normal_stiffness = young")
+        check(g["shear_stiffness"][()] == ym.young * ym.poisson, f"material {key}: shear_stiffness = young * poisson")
+        check(g["shear_damping"][()] == 0.0, f"material {key}: shear_damping = 0")
+        check(g["yade_poisson"][()] == ym.poisson, f"material {key}: yade_poisson")
         check(math.isclose(g["shear_friction"][()], math.tan(ym.frictionAngle), rel_tol=1e-15), f"material {key}: shear_friction = tan(frictionAngle)")
+    g0 = f["ONDEM/Materials"][str(mat)]
+    check(g0["shear_stiffness"][()] / g0["normal_stiffness"][()] != g0["yade_poisson"][()],
+          "test material: the quotient is 1 ulp off, so the test shows that yade_poisson is needed")
     check(len(f["ONDEM/Materials"]) == 2, f"{len(f['ONDEM/Materials'])} materials in the file, expected 2")
     pairs_file = sorted((int(a), int(b)) for t in ig for a, b in zip(ig[t]["id1"][:], ig[t]["id2"][:]))
     pairs_yade = sorted((i.id1, i.id2) for i in real_intrs)
@@ -213,6 +220,8 @@ for bid, st in before.items():
     check(close(np.array(b.state.angVel), st["angVel"]), f"body {bid}: angular velocity")
     q = np.array([b.state.ori[k] for k in range(4)])
     check(close(q, st["ori"]) or close(q, -st["ori"]), f"body {bid}: orientation {q} != {st['ori']}")
+    check(b.material.young == st["mat"]["young"] and b.material.poisson == st["mat"]["poisson"],
+          f"body {bid}: young and poisson restored exactly")
     for k, v in st["mat"].items():
         got = getattr(b.material, k)
         ok = math.isclose(got, v, rel_tol=1e-12) if isinstance(v, float) else got == v
@@ -268,15 +277,31 @@ import shutil
 broken = os.path.join(tempfile.gettempdir(), "test_box_spheres_no_young.vtkhdf")
 shutil.copy(out, broken)
 with h5py.File(broken, "a") as f:
-    del f["ONDEM/Materials"][list(f["ONDEM/Materials"])[0]]["young_modulus"]
+    del f["ONDEM/Materials"][list(f["ONDEM/Materials"])[0]]["normal_stiffness"]
 O.reset()
 set_engines()
 try:
     import_vtkhdf(broken)
-    check(False, "import of a file without young_modulus must raise")
+    check(False, "import of a file without normal_stiffness must raise")
 except ValueError as e:
-    check("young_modulus" in str(e), f"error names the missing field: {e}")
+    check("normal_stiffness" in str(e), f"error names the missing field: {e}")
     print("  missing field rejected:", e)
+
+# ---- shear_damping != 0 cannot be a FrictMat: refused ----
+damped = os.path.join(tempfile.gettempdir(), "test_box_spheres_damped.vtkhdf")
+shutil.copy(out, damped)
+with h5py.File(damped, "a") as f:
+    g = f["ONDEM/Materials"][list(f["ONDEM/Materials"])[0]]
+    del g["shear_damping"]
+    g.create_dataset("shear_damping", data=0.5)
+O.reset()
+set_engines()
+try:
+    import_vtkhdf(damped)
+    check(False, "import of shear_damping != 0 must raise")
+except ValueError as e:
+    check("shear_damping" in str(e) and len(O.bodies) == 0, f"shear_damping refused, nothing created: {e}")
+    print("  shear_damping != 0 rejected:", e)
 
 # ---- No engines: the importer must refuse before touching the scene ----
 O.reset()

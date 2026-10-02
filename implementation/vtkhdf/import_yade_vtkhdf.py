@@ -116,10 +116,12 @@ def _read_scene(f):
 # Reading and checking the file (nothing is created in the scene here)
 # ---------------------------------------------------------------------------
 
-# Material fields a FrictMat needs (provisional mapping, see implementation/README.md):
-# base_material.id, density; hertz_elastic.young_modulus, poisson_ratio;
-# frictional_3D.shear_friction = tan(frictionAngle)
-_FRICTMAT_FIELDS = ["id", "density", "young_modulus", "poisson_ratio", "shear_friction"]
+# FrictMat <-> linear_elastic_frictional_3D (decision 10 of 2 October 2026):
+#   normal_stiffness = young, shear_stiffness = young * poisson,
+#   shear_friction = tan(frictionAngle), shear_damping = 0 (FrictMat has none).
+# The stiffnesses hold a material stiffness (YADE's Young's modulus), not a
+# force per length as the schema text says; see implementation/README.md.
+_FRICTMAT_FIELDS = ["id", "density", "normal_stiffness", "shear_stiffness", "shear_friction", "shear_damping"]
 
 
 def _read_materials(f):
@@ -128,23 +130,39 @@ def _read_materials(f):
     Returns {stored material id: keyword arguments of FrictMat}.
 
     Every field of _FRICTMAT_FIELDS must be present; there are no defaults.
-    Raises ValueError naming the material and the missing fields, or if the
-    material is not a FrictMat.
+    young = normal_stiffness, poisson = shear_stiffness / normal_stiffness,
+    frictionAngle = atan(shear_friction). The YADE extra yade_poisson, when
+    present, gives poisson exactly (the quotient can be 1 ulp off); it must
+    agree with the quotient to round-off. Raises ValueError naming the material
+    and the problem: missing fields, a non-FrictMat material, shear_damping != 0
+    (FrictMat cannot represent it), or an inconsistent yade_poisson.
     """
     out = {}
     for key, g in f["ONDEM/Materials"].items():
+        where = f"[import] /ONDEM/Materials/{key}"
         mtype = g["material_type"][()].decode() if "material_type" in g else None
         if mtype != "FrictMat":
-            raise ValueError(f"[import] /ONDEM/Materials/{key}: material_type {mtype!r} is not supported "
+            raise ValueError(f"{where}: material_type {mtype!r} is not supported "
                              f"(this importer only rebuilds FrictMat)")
         missing = [k for k in _FRICTMAT_FIELDS if k not in g]
         if missing:
-            raise ValueError(f"[import] /ONDEM/Materials/{key}: missing field(s) {missing}; "
-                             f"a FrictMat needs {_FRICTMAT_FIELDS}")
+            raise ValueError(f"{where}: missing field(s) {missing}; a FrictMat needs {_FRICTMAT_FIELDS}")
+        kn = float(g["normal_stiffness"][()])
+        ks = float(g["shear_stiffness"][()])
+        damping = float(g["shear_damping"][()])
+        if damping != 0.0:
+            raise ValueError(f"{where}: shear_damping = {damping!r}; FrictMat has no shear damping")
+        poisson = ks / kn
+        if "yade_poisson" in g:
+            exact = float(g["yade_poisson"][()])
+            if abs(exact - poisson) > 4 * np.finfo(float).eps * abs(poisson):
+                raise ValueError(f"{where}: yade_poisson {exact!r} disagrees with "
+                                 f"shear_stiffness / normal_stiffness = {poisson!r}")
+            poisson = exact
         out[int(g["id"][()])] = dict(
             density       = float(g["density"][()]),
-            young         = float(g["young_modulus"][()]),
-            poisson       = float(g["poisson_ratio"][()]),
+            young         = kn,
+            poisson       = poisson,
             frictionAngle = float(np.arctan(float(g["shear_friction"][()]))),
             label         = g["label"][()].decode() if "label" in g else "",
         )

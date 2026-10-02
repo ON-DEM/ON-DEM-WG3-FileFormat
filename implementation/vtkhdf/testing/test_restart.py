@@ -55,6 +55,7 @@ from import_yade_vtkhdf import import_vtkhdf
 
 N_SETTLE, N_TILT, M = 8000, 2000, 2000
 R = 0.012            # sphere radius: reference length
+DROP_Z = 0.143       # start height of the sphere that lands after the restart
 
 failures = []
 def check(cond, msg):
@@ -80,8 +81,10 @@ def set_engines():
     ]
 
 
-def build_scene(with_clumps):
-    mat = O.materials.append(FrictMat(density=2450, young=3.7e7, poisson=0.27,
+def build_scene(with_clumps, with_drop):
+    # young * poisson / young != poisson for this pair (1 ulp): the restart is exact only
+    # because the file also carries yade_poisson
+    mat = O.materials.append(FrictMat(density=2450, young=37123456.789, poisson=0.24,
                                       frictionAngle=math.radians(23), label="glass"))
     wall_mat = O.materials.append(FrictMat(density=7800, young=2.1e8, poisson=0.41,
                                            frictionAngle=math.radians(11), label="steel"))
@@ -100,6 +103,11 @@ def build_scene(with_clumps):
                               orientation=Quaternion((0, 0, 1), math.radians(10)),
                               fixed=True, material=wall_mat))
     O.bodies[7].state.blockedDOFs = "xyz"     # one sphere that may only rotate
+    if with_drop:
+        # a sphere that is still falling at the export and lands after the restart (about
+        # step 10500): its new contacts get ks from the restored materials, which is exact
+        # only with yade_poisson
+        O.bodies.append(utils.sphere(Vector3(0.0, 0.0, DROP_Z), R, material=mat))
     clumps = []
     if with_clumps:
         # three clumps of two overlapping spheres, dropped into hollows of the top layer
@@ -176,14 +184,14 @@ def centre_line_normals():
             i.geom.normal = d / d.norm()
 
 
-def scenario(name, with_clumps, tol_1, tol_M):
+def scenario(name, with_clumps, with_drop, tol_1, tol_M):
     print(f"Scenario: {name}")
     out = os.path.join(tempfile.gettempdir(), f"test_restart_{'clumps' if with_clumps else 'plain'}.vtkhdf")
 
     # --- A: uninterrupted
     O.reset()
     set_engines()
-    clumps = build_scene(with_clumps)
+    clumps = build_scene(with_clumps, with_drop)
     O.run(N_SETTLE, wait=True)
     newton.gravity = (2.0, 1.0, -9.81)          # tilt: contacts carry shear load, some slide
     O.run(N_TILT, wait=True)
@@ -191,13 +199,20 @@ def scenario(name, with_clumps, tol_1, tol_M):
     A0_c = contacts()
     O.run(1, wait=True)
     A1_s, A1_c = body_states(), contacts()
-    O.run(M - 1, wait=True)
+    seen = set(A1_c)
+    for _ in range(M - 1):                      # step by step, to see contacts that form and break again
+        O.run(1, wait=True)
+        seen |= {(i.id1, i.id2) for i in O.interactions if i.isReal}
     AM_s, AM_c = body_states(), contacts()
     A_end_time, A_end_iter = O.time, O.iter
     sliding = sum(1 for c in A0_c.values()
                   if np.linalg.norm(c["fs"]) >= c["tan"] * np.linalg.norm(c["fn"]) * (1 - 1e-9))
     fs_max = max(np.linalg.norm(c["fs"]) for c in A0_c.values())
-    print(f"  A at restart: {len(A0_c)} contacts, {sliding} sliding, max |Fs| {fs_max:.3e} N")
+    formed = len(seen - set(A0_c))
+    print(f"  A at restart: {len(A0_c)} contacts, {sliding} sliding, max |Fs| {fs_max:.3e} N; "
+          f"{formed} contact(s) formed after the restart (their ks comes from the restored materials)")
+    if with_drop:
+        check(formed >= 1, f"{name}: a contact forms after the restart (restored materials are exercised)")
     check(fs_max > 1e-3, f"{name}: contacts carry shear load at the restart (otherwise the test proves little)")
     if with_clumps:
         members = {m for c in clumps for m in O.bodies[c].shape.members.keys()}
@@ -251,8 +266,12 @@ def scenario(name, with_clumps, tol_1, tol_M):
 
 
 check(O.numThreads == 1, f"the test needs 1 OpenMP thread (yadedaily default), got {O.numThreads}")
-scenario("without clumps (bit-identical)", with_clumps=False, tol_1=1e-10, tol_M=1e-10)
-scenario("with clumps (members' relative poses recomputed by YADE)", with_clumps=True, tol_1=1e-12, tol_M=1e-7)
+scenario("without clumps, a sphere lands after the restart (bit-identical)",
+         with_clumps=False, with_drop=True, tol_1=1e-10, tol_M=1e-10)
+# the clump tolerance was confirmed for this quiet scene: an impact after the restart
+# amplifies the clumps' round-off (about 1e-5 after 2000 steps, see implementation/README.md)
+scenario("with clumps (members' relative poses recomputed by YADE)",
+         with_clumps=True, with_drop=False, tol_1=1e-12, tol_M=1e-7)
 
 if failures:
     print(f"TEST FAILED ({len(failures)} check(s))")

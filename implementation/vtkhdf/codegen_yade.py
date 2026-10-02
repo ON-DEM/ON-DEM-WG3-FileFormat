@@ -249,7 +249,8 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
         lines.append(f'        except: pass')
     lines.append("")
 
-    # For each material class, emit its fields (strict lookup: class.field only)
+    # For each material class, emit its fields including inherited ones
+    # (strict lookup: class.field only)
     already_emitted = set()
     for cls_name in mat_classes:
         cls = schema.classes.get(cls_name)
@@ -257,7 +258,7 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
             lines.append(f"        # WARNING: schema class {cls_name} not found")
             continue
         lines.append(f"        # --- {cls_name}: {cls.docstring} ---")
-        for fld in cls.fields:
+        for fld in cls.all_fields:
             if fld.name in already_emitted:
                 continue
             already_emitted.add(fld.name)
