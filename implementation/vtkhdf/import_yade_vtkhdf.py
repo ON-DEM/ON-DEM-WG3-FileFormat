@@ -2,37 +2,45 @@
 import_yade_vtkhdf.py
 ON-DEM WG3 - VTKHDF to YADE importer
 
-Reads a .vtkhdf file written by export_yade_vtkhdf_generated.py and
-reconstructs the YADE simulation state:
-  - Scene metadata  (time, dt, gravity)
+Reads a .vtkhdf file written by export_yade_vtkhdf.py and reconstructs the
+YADE simulation state. Restart reads the whole file: the VTKHDF blocks (body
+positions and the block fields) and /ONDEM (everything else), joined on
+body_id.
+
+Restored:
+  - Scene metadata  (dt, gravity; time is only printed, O.time is read-only)
   - Materials       (FrictMat from /ONDEM/Materials/)
-  - Sphere bodies   (from /VTKHDF/PointData/)
-  - Walls           (from /ONDEM/Bodies/Walls/)
-  - Interactions are NOT restored — YADE rebuilds them via the collider
-    on the first time step, which is the correct approach.
+  - Spheres         (blocks + /ONDEM/Bodies/sphere/)
+  - Walls           (blocks + /ONDEM/Bodies/wall/)
+  - Display groups  (returned, so they can be passed back to export_vtkhdf)
+Not restored:
+  - Interactions: YADE rebuilds contacts with the collider on the first
+    step, so the contact history (shear force, sliding state) is lost.
+  - Boxes, facets, polyhedra and other shapes (reported as skipped).
+  - Clumps (clump_id is read but clumps are not rebuilt).
 
 File layout expected (written by the exporter):
-  /VTKHDF/                     VTK PolyData structure
-    Points          (N,3)      sphere centres (same as PointData/position)
-    NumberOfPoints  (1,)
-    PointData/
-      body_id       (N,)  int32
-      material_id   (N,)  int32
-      clump_id      (N,)  int32
-      position      (N,3) float64
-      velocity      (N,3) float64
-      angular_velocity (N,3) float64
-      orientation   (N,4) float64   stored as [x, y, z, w]
-      mass          (N,)  float64
-      inertia       (N,9) float64   row-major diagonal 3x3
-      volume        (N,)  float64
-      radius        (N,)  float64
+  /VTKHDF/                       MultiBlockDataSet
+    <group name>/                one PolyData block per display group
+      Points            (N,3)    body positions, float64
+      PointData/
+        body_id         (N,)     int64, joins the block to /ONDEM
+        radius          (N,)     NaN for non-spheres
+        velocity        (N,3)
+        angular_velocity (N,3)
+        orientation     (N,4)    [x, y, z, w], attribute order = "xyzw"
+    Assembly/<group name>        soft link -> /VTKHDF/<group name>
   /ONDEM/
-    Scene/                     attrs: time, timestep  +  datasets: gravity, units
-    Materials/<id>/            scalar datasets per material
-    Bodies/
-      Walls/                   axis, sense, position, body_id, material_id
-    Interactions/              (not used for import)
+    Scene/                       attrs: time, timestep; datasets: gravity,
+                                 units, display_group_names
+    Materials/<id>/              scalar datasets per material
+    Bodies/<shape group>/        body_id + the fields not in the blocks
+                                 (material_id, clump_id, mass, inertia, volume,
+                                 wall axis/sense, ...)
+    Interactions/<type>/         not used for import
+
+A body's display group is the index of its block's name in
+display_group_names.
 
 Quaternion convention
 ---------------------
@@ -46,8 +54,10 @@ Usage
 Inside a YADE script:
 
     from import_yade_vtkhdf import import_vtkhdf
-    import_vtkhdf("sim_0000.vtkhdf")
+    r = import_vtkhdf("sim_0000.vtkhdf")
     O.run(10000, wait=True)
+    # write the next file with the same display groups
+    export_vtkhdf("sim_0001.vtkhdf", r["display_group_names"], r["display_group"])
 
 Standalone (YADE Python):
 
@@ -65,6 +75,10 @@ except ImportError:
         "or:  apt install python3-h5py"
     )
 
+from yade import O, utils, Vector3, Quaternion, FrictMat
+
+from hdf5_utils import vtkhdf_read_blocks, ondem_read_bodies
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,12 +90,16 @@ def _v3(arr):
 
 
 def _read_scene(f):
-    """Return (time, dt, gravity_Vector3) from /ONDEM/Scene."""
+    """Return (time, dt, gravity_Vector3, display_group_names) from /ONDEM/Scene."""
     sc = f["ONDEM/Scene"]
     time    = float(sc.attrs["time"])
     dt      = float(sc.attrs["timestep"])
     grav    = sc["gravity"][:]           # shape (3,)
-    return time, dt, _v3(grav)
+    if "display_group_names" in sc:
+        names = [str(n) for n in sc["display_group_names"].asstr()[:]]
+    else:
+        names = ["all"]                  # schema default
+    return time, dt, _v3(grav), names
 
 
 def _read_materials(f):
@@ -117,113 +135,68 @@ def _read_materials(f):
     return id_map
 
 
-def _read_spheres(f, mat_id_map):
+def _read_bodies(f, names):
     """
-    Reconstruct sphere bodies from /VTKHDF/PointData/.
-    Returns list of newly added YADE body ids.
+    Join the VTKHDF blocks and /ONDEM/Bodies on body_id.
+    Returns {body_id: record} with the fields of both parts, plus
+    "display_group" (index of the block's name in names) and "shape_group".
     """
-    pd = f["VTKHDF/PointData"]
+    blocks = vtkhdf_read_blocks(f, names)
+    ondem  = ondem_read_bodies(f)
 
-    body_ids_stored = pd["body_id"][:]          # (N,) int32
-    mat_ids_stored  = pd["material_id"][:]      # (N,) int32
-    positions       = pd["position"][:]         # (N,3)
-    velocities      = pd["velocity"][:]         # (N,3)
-    ang_vels        = pd["angular_velocity"][:] # (N,3)
-    orientations    = pd["orientation"][:]      # (N,4) stored as [x,y,z,w]
-    masses          = pd["mass"][:]             # (N,)
-    inertias        = pd["inertia"][:]          # (N,9) row-major
-    radii           = pd["radius"][:]           # (N,)
+    only_blocks = sorted(set(blocks) - set(ondem))
+    only_ondem  = sorted(set(ondem) - set(blocks))
+    if only_blocks or only_ondem:
+        raise ValueError(
+            "[import] /VTKHDF blocks and /ONDEM/Bodies do not hold the same bodies: "
+            f"only in blocks: {only_blocks[:20]}, only in /ONDEM: {only_ondem[:20]}")
 
-    N = len(radii)
-    print(f"[import] Restoring {N} sphere(s) ...")
+    group_index = {name: i for i, name in enumerate(names)}
+    bodies = {}
+    for bid, rec in blocks.items():
+        merged = dict(ondem[bid])
+        merged.update(rec)
+        merged["display_group"] = group_index[rec["block"]]
+        bodies[bid] = merged
+    return bodies
 
-    yade_body_ids = []
 
-    for i in range(N):
-        r   = float(radii[i])
-        mid = int(mat_ids_stored[i])
-
-        # Resolve material — fall back to index 0 if stored id not found
-        yade_mat = mat_id_map.get(mid, 0)
-
-        b = utils.sphere(
-            center   = (float(positions[i, 0]),
-                        float(positions[i, 1]),
-                        float(positions[i, 2])),
-            radius   = r,
-            material = yade_mat,
-        )
-
-        # --- linear velocity ---
-        b.state.vel = _v3(velocities[i])
-
-        # --- angular velocity ---
-        b.state.angVel = _v3(ang_vels[i])
-
-        # --- orientation ---
-        # Stored as [x, y, z, w]; YADE Quaternion(w, x, y, z)
-        qx, qy, qz, qw = (float(orientations[i, 0]),
-                          float(orientations[i, 1]),
-                          float(orientations[i, 2]),
-                          float(orientations[i, 3]))
+def _set_state(b, rec):
+    """Set the dynamic state of YADE body b from a joined record."""
+    if "velocity" in rec:
+        b.state.vel = _v3(rec["velocity"])
+    if "angular_velocity" in rec:
+        b.state.angVel = _v3(rec["angular_velocity"])
+    if "orientation" in rec:
+        # stored [x, y, z, w]; YADE constructor Quaternion(w, x, y, z)
+        qx, qy, qz, qw = (float(v) for v in rec["orientation"])
         b.state.ori = Quaternion(qw, qx, qy, qz)
 
-        # --- mass (override utils.sphere() computed value) ---
-        m = float(masses[i])
-        if m > 0.0:
-            b.state.mass = m
 
-        # --- inertia (override; stored as flattened 3x3 diagonal) ---
-        # inertia[i] = [Ixx, 0, 0, 0, Iyy, 0, 0, 0, Izz]
-        Ixx = float(inertias[i, 0])
-        Iyy = float(inertias[i, 4])
-        Izz = float(inertias[i, 8])
-        if Ixx > 0.0:
-            b.state.inertia = Vector3(Ixx, Iyy, Izz)
-
-        O.bodies.append(b)
-        yade_body_ids.append(b.id)
-
-    return yade_body_ids
+def _make_sphere(rec, yade_mat):
+    b = utils.sphere(center=_v3(rec["position"]), radius=float(rec["radius"]), material=yade_mat)
+    _set_state(b, rec)
+    # mass (override the value computed by utils.sphere)
+    m = float(rec.get("mass", 0.0))
+    if m > 0.0:
+        b.state.mass = m
+    # inertia: stored as a flattened 3x3 matrix, YADE keeps the diagonal
+    if "inertia" in rec:
+        I = rec["inertia"]
+        if float(I[0]) > 0.0:
+            b.state.inertia = Vector3(float(I[0]), float(I[4]), float(I[8]))
+    return b
 
 
-def _read_walls(f, mat_id_map):
-    """
-    Reconstruct wall bodies from /ONDEM/Bodies/Walls/ if present.
-    Returns list of newly added YADE body ids.
-    """
-    path = "ONDEM/Bodies/Walls"
-    if path not in f:
-        return []
+def _make_wall(rec, yade_mat):
+    axis = int(rec["axis"])
+    b = utils.wall(position=float(rec["position"][axis]), axis=axis,
+                   sense=int(rec["sense"]), material=yade_mat)
+    _set_state(b, rec)
+    return b
 
-    wg        = f[path]
-    axes      = wg["axis"][:]       # (W,) int32
-    senses    = wg["sense"][:]      # (W,) int32
-    positions = wg["position"][:]   # (W,3)
-    mat_ids   = wg["material_id"][:] # (W,) int32
 
-    W = len(axes)
-    print(f"[import] Restoring {W} wall(s) ...")
-
-    yade_body_ids = []
-    for i in range(W):
-        mid      = int(mat_ids[i])
-        yade_mat = mat_id_map.get(mid, 0)
-
-        # Wall position scalar: coordinate along the wall's axis
-        axis = int(axes[i])
-        pos  = float(positions[i, axis])   # extract the relevant coordinate
-
-        b = utils.wall(
-            position = pos,
-            axis     = axis,
-            sense    = int(senses[i]),
-            material = yade_mat,
-        )
-        O.bodies.append(b)
-        yade_body_ids.append(b.id)
-
-    return yade_body_ids
+_MAKERS = {"sphere": _make_sphere, "wall": _make_wall}
 
 
 # ---------------------------------------------------------------------------
@@ -240,25 +213,33 @@ def import_vtkhdf(filename,
     Parameters
     ----------
     filename        : str   Path to the .vtkhdf file.
-    restore_time    : bool  Set O.time from the file (default True).
+    restore_time    : bool  Print the saved time (O.time is read-only in YADE).
     restore_dt      : bool  Set O.dt   from the file (default True).
     restore_gravity : bool  Set gravity on NewtonIntegrator (default True).
                             Only works if a NewtonIntegrator already exists
                             in O.engines.
 
+    Bodies are appended in increasing stored body_id. Into an empty scene,
+    with ids 0..N-1 in the file and every shape supported, YADE gives them
+    the same ids; otherwise "id_map" says where each body went.
+
     Returns
     -------
     dict with keys:
-        'sphere_ids'  – list of YADE body ids for restored spheres
-        'wall_ids'    – list of YADE body ids for restored walls
-        'mat_id_map'  – dict {stored_material_id -> O.materials index}
+        'sphere_ids'          – YADE body ids of the restored spheres
+        'wall_ids'            – YADE body ids of the restored walls
+        'skipped_ids'         – stored body ids not restored (unsupported shape)
+        'id_map'              – {stored body_id -> YADE body id}
+        'mat_id_map'          – {stored material id -> O.materials index}
+        'display_group_names' – scene.display_group_names from the file
+        'display_group'       – {YADE body id -> display group index}
     """
     print(f"[import] Reading '{filename}' ...")
 
     with h5py.File(filename, "r") as f:
 
         # 1. Scene metadata
-        time, dt, gravity = _read_scene(f)
+        time, dt, gravity, names = _read_scene(f)
 
         if restore_time:
             # O.time and O.iter are both read-only in YADE (computed properties).
@@ -281,20 +262,46 @@ def import_vtkhdf(filename,
         # 2. Materials
         mat_id_map = _read_materials(f)
 
-        # 3. Spheres
-        sphere_ids = _read_spheres(f, mat_id_map)
+        # 3. Bodies: blocks + /ONDEM joined on body_id
+        bodies = _read_bodies(f, names)
 
-        # 4. Walls
-        wall_ids = _read_walls(f, mat_id_map)
+    sphere_ids, wall_ids, skipped = [], [], {}
+    id_map, display_group = {}, {}
+    for bid in sorted(bodies):
+        rec = bodies[bid]
+        sg = rec["shape_group"]
+        make = _MAKERS.get(sg)
+        if make is None:
+            skipped.setdefault(sg, []).append(bid)
+            continue
+        yade_mat = mat_id_map.get(int(rec.get("material_id", -1)), 0)
+        b = make(rec, yade_mat)
+        new_id = O.bodies.append(b)
+        id_map[bid] = new_id
+        display_group[new_id] = rec["display_group"]
+        (sphere_ids if sg == "sphere" else wall_ids).append(new_id)
 
-    total = len(sphere_ids) + len(wall_ids)
+    for sg, ids in skipped.items():
+        print(f"[import] Warning: {len(ids)} body(ies) of shape group '{sg}' not restored "
+              f"(not supported by this importer): body_id {ids[:20]}")
+    clumped = [bid for bid, rec in bodies.items() if int(rec.get("clump_id", -1)) >= 0]
+    if clumped:
+        print(f"[import] Warning: {len(clumped)} body(ies) belong to clumps; clumps are not rebuilt.")
+    moved = {s: n for s, n in id_map.items() if s != n}
+    if moved:
+        print(f"[import] Note: {len(moved)} body id(s) changed (scene not empty or ids not contiguous); see 'id_map'.")
+
     print(f"[import] Done. {len(sphere_ids)} sphere(s), {len(wall_ids)} wall(s) "
-          f"added → {len(O.bodies)} total bodies in scene.")
+          f"in {len(names)} display group(s) {names} → {len(O.bodies)} total bodies in scene.")
 
     return {
-        "sphere_ids" : sphere_ids,
-        "wall_ids"   : wall_ids,
-        "mat_id_map" : mat_id_map,
+        "sphere_ids"          : sphere_ids,
+        "wall_ids"            : wall_ids,
+        "skipped_ids"         : sorted(i for ids in skipped.values() for i in ids),
+        "id_map"              : id_map,
+        "mat_id_map"          : mat_id_map,
+        "display_group_names" : names,
+        "display_group"       : display_group,
     }
 
 
@@ -303,6 +310,11 @@ def import_vtkhdf(filename,
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    from yade import (ForceResetter, InsertionSortCollider, Bo1_Sphere_Aabb, Bo1_Wall_Aabb,
+                      InteractionLoop, Ig2_Sphere_Sphere_ScGeom, Ig2_Wall_Sphere_ScGeom,
+                      Ip2_FrictMat_FrictMat_FrictPhys, Law2_ScGeom_FrictPhys_CundallStrack,
+                      NewtonIntegrator)
+
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     if not args:
         print("Usage:  yade import_yade_vtkhdf.py -- <file.vtkhdf>")

@@ -2,7 +2,14 @@
 test_export.py
 YADE simulation: spheres poured into a box (no top lid).
 Guarantees sphere-sphere AND sphere-wall interactions at export time.
-Run with:  yadedaily test_export.py
+
+Exports with two display groups (spheres -> "particles", walls -> "geometry",
+plus an empty group "unused"), checks the file, imports it into a reset scene,
+compares every body by body_id and runs 1000 more steps.
+
+Run with (from Windows):
+    wsl -d Ubuntu-24.04 yadedaily -n -x <path>/implementation/vtkhdf/testing/test_export.py
+Ends with "TEST PASSED" or "TEST FAILED" (exit code 1).
 """
 
 from yade import pack, utils, O, Vector3
@@ -13,6 +20,10 @@ HERE = os.path.dirname(os.path.abspath(sys.argv[0]))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from export_yade_vtkhdf import export_vtkhdf
+from import_yade_vtkhdf import import_vtkhdf
+import math, tempfile
+import numpy as np
+import h5py
 
 # ---- Material ----
 mat = O.materials.append(
@@ -46,28 +57,130 @@ for z in zs:
 
 print(f"Bodies added: {len(O.bodies)} ({len(O.bodies)-5} spheres, 5 walls)")
 
-# ---- Engines ----
-O.engines = [
-    ForceResetter(),
-    InsertionSortCollider([Bo1_Sphere_Aabb(), Bo1_Wall_Aabb()]),
-    InteractionLoop(
-        [Ig2_Sphere_Sphere_ScGeom(), Ig2_Wall_Sphere_ScGeom()],
-        [Ip2_FrictMat_FrictMat_FrictPhys()],
-        [Law2_ScGeom_FrictPhys_CundallStrack()]
-    ),
-    NewtonIntegrator(gravity=(0, 0, -9.81), damping=0.4),
-]
+# a non-trivial orientation, to check the quaternion order
+O.bodies[5].state.ori = Quaternion((1, 2, 3), 0.7)
 
+# ---- Engines ----
+def set_engines():
+    O.engines = [
+        ForceResetter(),
+        InsertionSortCollider([Bo1_Sphere_Aabb(), Bo1_Wall_Aabb()]),
+        InteractionLoop(
+            [Ig2_Sphere_Sphere_ScGeom(), Ig2_Wall_Sphere_ScGeom()],
+            [Ip2_FrictMat_FrictMat_FrictPhys()],
+            [Law2_ScGeom_FrictPhys_CundallStrack()]
+        ),
+        NewtonIntegrator(gravity=(0, 0, -9.81), damping=0.4),
+    ]
+
+set_engines()
 O.dt = 1e-5
 
 # ---- Let spheres settle under gravity ----
 # Run until kinetic energy is low (spheres have stacked and are touching)
 O.run(8000, wait=True)
 
-n_real = sum(1 for i in O.interactions if i.isReal)
+real_intrs = [i for i in O.interactions if i.isReal]
+n_real = len(real_intrs)
 print(f"Real interactions at export time: {n_real}")
 
-# ---- Export ----
-export_vtkhdf("test_box_spheres.vtkhdf")
+# ---- Export with display groups ----
+NAMES = ["particles", "geometry", "unused"]
+group_of = lambda b: 0 if isinstance(b.shape, Sphere) else 1
+out = os.path.join(tempfile.gettempdir(), "test_box_spheres.vtkhdf")
+export_vtkhdf(out, NAMES, group_of)
 
-print("Done. Inspect with: h5ls -r test_box_spheres.vtkhdf")
+# state before restart, per body id
+before = {}
+for b in O.bodies:
+    before[b.id] = dict(
+        pos=np.array(b.state.pos), vel=np.array(b.state.vel), angVel=np.array(b.state.angVel),
+        ori=np.array([b.state.ori[k] for k in range(4)]), mass=b.state.mass,
+        radius=b.shape.radius if isinstance(b.shape, Sphere) else None,
+        wall=(b.shape.axis, b.shape.sense) if isinstance(b.shape, Wall) else None,
+        density=b.material.density, group=group_of(b))
+
+failures = []
+def check(cond, msg):
+    if not cond:
+        failures.append(msg)
+        print("  FAIL:", msg)
+
+# ---- Check the file ----
+print("Checking the file ...")
+with h5py.File(out, "r") as f:
+    check(list(f["VTKHDF/Assembly"]) == NAMES, f"Assembly links {list(f['VTKHDF/Assembly'])}")
+    check(list(f["ONDEM/Scene/display_group_names"].asstr()[:]) == NAMES, "display_group_names in /ONDEM/Scene")
+    block_ids = set()
+    for name in NAMES:
+        blk = f["VTKHDF"][name]
+        check(blk["Points"].dtype == np.float64, f"{name}: Points dtype {blk['Points'].dtype}")
+        ids = [int(v) for v in blk["PointData/body_id"][:]]
+        block_ids |= set(ids)
+        expected = sorted(bid for bid, st in before.items() if NAMES[st["group"]] == name)
+        check(sorted(ids) == expected, f"{name}: body ids {sorted(ids)} != {expected}")
+    check(f["VTKHDF/unused/NumberOfPoints"][0] == 0, "empty group 'unused' has 0 points")
+    for sg in f["ONDEM/Bodies"]:
+        check("position" not in f["ONDEM/Bodies"][sg], f"/ONDEM/Bodies/{sg} must not store position")
+
+    # interactions: all real ones written, ids found in the blocks
+    ig = f["ONDEM/Interactions"]
+    n_file = sum(int(ig[t].attrs["count"]) for t in ig)
+    check(n_real > 0, "the test scene has contacts at export time")
+    check(n_file == n_real, f"interactions in file {n_file} != real interactions {n_real}")
+    for t in ig:
+        ids = set(int(v) for v in ig[t]["id1"][:]) | set(int(v) for v in ig[t]["id2"][:])
+        check(ids <= block_ids, f"interaction ids not in the blocks: {sorted(ids - block_ids)}")
+        check(t == t.lower(), f"interaction group name {t!r} is not snake_case")
+    pairs_file = sorted((int(a), int(b)) for t in ig for a, b in zip(ig[t]["id1"][:], ig[t]["id2"][:]))
+    pairs_yade = sorted((i.id1, i.id2) for i in real_intrs)
+    check(pairs_file == pairs_yade, "interaction pairs id1/id2 match the scene")
+
+# ---- Restart: import into a reset scene ----
+print("Restarting from the file ...")
+O.reset()
+set_engines()
+r = import_vtkhdf(out)
+check(r["display_group_names"] == NAMES, f"display_group_names {r['display_group_names']}")
+check(r["skipped_ids"] == [], f"skipped bodies {r['skipped_ids']}")
+check(all(s == n for s, n in r["id_map"].items()), "body ids unchanged after import into an empty scene")
+check(len(O.bodies) == len(before), f"{len(O.bodies)} bodies after import, {len(before)} before")
+
+def close(a, b):
+    return np.allclose(a, b, rtol=0, atol=1e-12)
+
+for bid, st in before.items():
+    b = O.bodies[r["id_map"][bid]]
+    check(close(np.array(b.state.pos), st["pos"]), f"body {bid}: position")
+    check(close(np.array(b.state.vel), st["vel"]), f"body {bid}: velocity")
+    check(close(np.array(b.state.angVel), st["angVel"]), f"body {bid}: angular velocity")
+    q = np.array([b.state.ori[k] for k in range(4)])
+    check(close(q, st["ori"]) or close(q, -st["ori"]), f"body {bid}: orientation {q} != {st['ori']}")
+    check(b.material.density == st["density"], f"body {bid}: material density")
+    check(r["display_group"][b.id] == st["group"], f"body {bid}: display group")
+    if st["radius"] is not None:
+        check(b.shape.radius == st["radius"], f"body {bid}: radius")
+        check(b.state.mass == st["mass"], f"body {bid}: mass")
+    if st["wall"] is not None:
+        check((b.shape.axis, b.shape.sense) == st["wall"], f"body {bid}: wall axis/sense")
+
+# ---- The restarted scene runs ----
+O.dt = 1e-5
+O.run(1000, wait=True)
+check(sum(1 for i in O.interactions if i.isReal) > 0, "contacts rebuilt after restart")
+check(all(not np.isnan(b.state.pos[2]) for b in O.bodies), "positions finite after 1000 steps")
+
+# ---- Export again with the groups returned by the importer ----
+out2 = os.path.join(tempfile.gettempdir(), "test_box_spheres_restart.vtkhdf")
+export_vtkhdf(out2, r["display_group_names"], r["display_group"])
+with h5py.File(out2, "r") as f:
+    for name in NAMES:
+        ids = sorted(int(v) for v in f["VTKHDF"][name]["PointData/body_id"][:])
+        expected = sorted(bid for bid, st in before.items() if NAMES[st["group"]] == name)
+        check(ids == expected, f"re-export {name}: body ids")
+
+print(f"Files: {out}, {out2}")
+if failures:
+    print(f"TEST FAILED ({len(failures)} check(s))")
+    sys.exit(1)
+print("TEST PASSED")
