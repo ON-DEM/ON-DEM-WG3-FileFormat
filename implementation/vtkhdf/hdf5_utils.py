@@ -254,6 +254,60 @@ def point_array(values, width: int = None):
     return out
 
 
+def column_array(values, hdf5_type: str):
+    """Turn a list of per-item values of one schema type into an array for HDF5.
+
+    Missing values (None): NaN for float types, -1 for integers (the schema's
+    "no id" value), 0 for booleans. Returns None for types that cannot be written
+    as a column (the caller skips the field).
+    """
+    if hdf5_type == "scalar_float":
+        return point_array(values)
+    if hdf5_type == "scalar_int":
+        return np.array([-1 if v is None else int(v) for v in values], dtype=np.int64)
+    if hdf5_type == "scalar_bool":
+        return np.array([0 if v is None else int(bool(v)) for v in values], dtype=np.int8)
+    if hdf5_type == "vector3":
+        return point_array(values, 3)
+    if hdf5_type == "quaternion":
+        return point_array(values, 4)
+    if hdf5_type == "matrix3":
+        out = np.full((len(values), 9), np.nan, dtype=np.float64)
+        for i, m in enumerate(values):
+            if m is not None:
+                out[i] = [float(m[r][c]) for r in range(3) for c in range(3)]
+        return out
+    return None
+
+
+def hdf5_write_column(group, field_name: str, values, hdf5_type: str) -> bool:
+    """Write one per-item field (one value per body or interaction) as a dataset.
+
+    Strings become a variable-length string dataset, quaternions get the
+    order attribute. Returns False if the type cannot be written.
+    """
+    if hdf5_type == "string":
+        hdf5_write_string_array(group, field_name, values)
+        return True
+    arr = column_array(values, hdf5_type)
+    if arr is None:
+        return False
+    ds = group.create_dataset(field_name, data=arr)
+    if hdf5_type == "quaternion":
+        ds.attrs["order"] = QUATERNION_ORDER
+    return True
+
+
+def snake_case(name: str) -> str:
+    """'FrictPhys' -> 'frict_phys': names written in the file are snake_case."""
+    out = []
+    for i, ch in enumerate(name):
+        if ch.isupper() and i > 0 and (not name[i - 1].isupper() or (i + 1 < len(name) and name[i + 1].islower())):
+            out.append("_")
+        out.append(ch.lower())
+    return "".join(out)
+
+
 def validate_display_groups(names, groups: dict):
     """Check display group names and the group index of every body.
 

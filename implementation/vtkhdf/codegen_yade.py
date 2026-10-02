@@ -27,7 +27,7 @@ from schema_parser import parse_schema_dir, Schema, ClassDef, FieldDef
 # ---------------------------------------------------------------------------
 
 def _load_mapping(mapping_path: str) -> dict:
-    with open(mapping_path) as f:
+    with open(mapping_path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -74,9 +74,14 @@ DO NOT EDIT MANUALLY - re-run the generator to update.
 
 Usage (inside YADE or from yadedaily -x):
     from export_yade_vtkhdf import export_vtkhdf
-    export_vtkhdf("output.vtkhdf")
+    export_vtkhdf("output.vtkhdf")                      # one display group 'all'
 
-Periodic engine usage:
+    # two display groups, i.e. two blocks in ParaView
+    export_vtkhdf("output.vtkhdf",
+                  display_group_names=["particles", "geometry"],
+                  display_group=lambda b: 0 if isinstance(b.shape, Sphere) else 1)
+
+Periodic engine usage (one timestep per file):
     O.engines += [PyRunner(
         command='export_vtkhdf("sim_%04d.vtkhdf" % O.iter)',
         iterPeriod=1000)]
@@ -87,7 +92,9 @@ import h5py
 import os
 import sys
 
-from hdf5_utils import hdf5_write_field, hdf5_write_scalar_array, hdf5_write_vector3_array, hdf5_write_quaternion_array, hdf5_write_matrix3_array, hdf5_write_string_array
+from hdf5_utils import (hdf5_write_field, hdf5_write_column, hdf5_write_string_array,
+                        point_array, column_array, snake_case, validate_display_groups,
+                        vtkhdf_init_multiblock, vtkhdf_write_polydata_block, QUATERNION_ORDER)
 
 '''
 
@@ -117,9 +124,52 @@ def _quat(q):
     """YADE (minieigen) indexes quaternions as q[0..3] = (x, y, z, w), the file order."""
     return np.array([q[0], q[1], q[2], q[3]], dtype=np.float64)
 
-def _mat3_flat(iv):
-    """YADE inertia is a Vector3 of principal moments → diagonal 3x3, row-major."""
-    return np.array([iv[0],0,0, 0,iv[1],0, 0,0,iv[2]], dtype=np.float64)
+def _diag3(iv):
+    """YADE inertia is a Vector3 of principal moments → diagonal 3x3."""
+    return [[iv[0], 0.0, 0.0], [0.0, iv[1], 0.0], [0.0, 0.0, iv[2]]]
+
+'''
+
+
+def _gen_display_group_helpers(mapping: dict) -> str:
+    """Generate the code-agnostic display group helpers.
+
+    The DEM code has no display group: the user passes it to export_vtkhdf().
+    The only code-specific part is the body id expression from the mapping.
+    """
+    body_id_expr = _lookup_mapping(mapping, "base_body", "body_id")
+    return f'''\
+# ---------------------------------------------------------------------------
+# Display groups (set by export_vtkhdf arguments)
+# ---------------------------------------------------------------------------
+
+_DISPLAY_GROUP_NAMES = ["all"]
+_DISPLAY_GROUP_SOURCE = None
+
+def _display_group_names():
+    """scene.display_group_names for the current export."""
+    return list(_DISPLAY_GROUP_NAMES)
+
+def _display_group(b):
+    """base_body.display_group of body b: from the dict {{body_id: index}} or the
+    callable given to export_vtkhdf; 0 (the default group) otherwise."""
+    src = _DISPLAY_GROUP_SOURCE
+    if src is None:
+        return 0
+    if callable(src):
+        return src(b)
+    return src.get({body_id_expr}, 0)
+
+def _collect(items, fields):
+    """Evaluate every getter of fields on every item; a failing getter gives None."""
+    cols = {{}}
+    for name, _h, _mandatory, get in fields:
+        vals = []
+        for it in items:
+            try: vals.append(get(it))
+            except Exception: vals.append(None)
+        cols[name] = vals
+    return cols
 
 '''
 
@@ -217,386 +267,278 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _gen_spheres_exporter(schema: Schema, mapping: dict) -> str:
-    """Generate _export_bodies writing bodies separated by shape type to /ONDEM/Bodies/."""
-    state_cls  = schema.classes.get("state")
-    sphere_cls = schema.classes.get("sphere")
-    body_cls   = schema.classes.get("body")
+# ---------------------------------------------------------------------------
+# Bodies: one VTKHDF block per display group + /ONDEM/Bodies
+# ---------------------------------------------------------------------------
 
-    # Shape types to separate
-    shape_types = ['Sphere', 'Box', 'Polyhedron', 'Wall', 'Facet']
+# Per-body fields written in the VTKHDF blocks as PointData, besides Points
+# (= position) and body_id. PROVISIONAL split (open point, to agree with Bruno):
+# every other per-body field goes to /ONDEM/Bodies/<shape group>/.
+# Geometry is stored once: position only in the blocks, never in /ONDEM.
+_BLOCK_FIELDS = ["radius", "velocity", "angular_velocity", "orientation"]
 
-    # Collect all fields we want per body
-    # body fields + state fields + shape-specific fields
-    all_particle_fields = []
+# Schema classes that hold per-body data (fields are merged in this order)
+_BODY_CLASSES = ["base_body", "base_state", "thermal", "liquid_film"]
+
+# Schema shape classes; the class name is the group name in /ONDEM/Bodies
+_SHAPE_CLASSES = ["sphere", "box", "polyhedron"]
+
+# HDF5 types of the shape fields that are not in the schema (mapping "_extra_shapes")
+_EXTRA_SHAPE_FIELD_TYPES = {
+    "axis": "scalar_int", "sense": "scalar_int",
+    "normal": "vector3", "vertices": "matrix3",
+}
+
+# Never written as /ONDEM datasets: position and body_id are in the blocks
+# (body_id also in /ONDEM, as the join key, see below); display_group is the
+# block the body is in.
+_NOT_IN_ONDEM = {"position", "display_group"} | set(_BLOCK_FIELDS)
+
+
+def _field_entry(fld: FieldDef, expr: str, var: str, cls_name: str) -> list:
+    tag = "[mandatory]" if fld.mandatory else "[optional]" if fld.optional else ""
+    return [
+        f"    # {tag} {cls_name}.{fld.name}: {fld.type_str} {fld.units}".rstrip(),
+        f'    ("{fld.name}", "{fld.hdf5_type}", {fld.mandatory}, lambda {var}: {expr}),',
+    ]
+
+
+def _gen_bodies_exporter(schema: Schema, mapping: dict) -> str:
+    """Generate _export_bodies: /VTKHDF blocks per display group and /ONDEM/Bodies."""
+    collections = mapping.get("_collections", {})
+    bodies_expr = collections.get("bodies", "[]")
+    group_expr = _lookup_mapping(mapping, "base_body", "display_group") or "0"
+    shape_type_expr = mapping.get("_shape_type", "None")
+    shape_groups = mapping.get("_shape_groups", {})
+    extra_shapes = mapping.get("_extra_shapes", {})
+
+    # --- per-body fields: body + state classes, and the shape fields that go in the blocks
+    lines = [
+        "# Per-body fields: (name, hdf5 type, mandatory, getter).",
+        "# Generated from the schema; getters are the mapping expressions.",
+        "_BODY_FIELDS = [",
+    ]
     seen = set()
+    for cls_name in _BODY_CLASSES:
+        cls = schema.classes.get(cls_name)
+        if not cls:
+            lines.append(f"    # WARNING: schema class {cls_name} not found")
+            continue
+        for fld in cls.all_fields:
+            if fld.name in seen or fld.name == "display_group":
+                continue
+            seen.add(fld.name)
+            if fld.hdf5_type == "unknown":
+                lines.append(f"    # SKIPPED {cls_name}.{fld.name}: nested type {fld.type_str}")
+                continue
+            expr = _lookup_mapping(mapping, cls_name, fld.name)
+            if not expr:
+                lines.append(f"    # UNMAPPED {cls_name}.{fld.name}")
+                continue
+            lines += _field_entry(fld, expr, "b", cls_name)
+    for cls_name in _SHAPE_CLASSES:
+        cls = schema.classes.get(cls_name)
+        for fld in (cls.fields if cls else []):
+            if fld.name in _BLOCK_FIELDS and fld.name not in seen:
+                seen.add(fld.name)
+                expr = _lookup_mapping(mapping, cls_name, fld.name)
+                if expr:
+                    lines += _field_entry(fld, expr, "b", cls_name)
+    lines.append("]")
+    lines.append("")
 
-    for cls_name in ["body", "state", "sphere", "box", "polyhedron"]:
+    # --- shape-specific fields written in /ONDEM/Bodies/<shape group>
+    lines.append("# Shape fields per /ONDEM/Bodies group (fields that are not in the blocks)")
+    lines.append("_SHAPE_FIELDS = {")
+    for cls_name in _SHAPE_CLASSES:
         cls = schema.classes.get(cls_name)
         if not cls:
             continue
-        for fld in cls.all_fields:
-            if fld.name in seen:
+        lines.append(f'  "{cls_name}": [')
+        for fld in cls.fields:
+            if fld.name in _BLOCK_FIELDS:
+                lines.append(f"    # {fld.name}: in the VTKHDF blocks")
                 continue
-            seen.add(fld.name)
-            all_particle_fields.append((cls_name, fld))
+            expr = _lookup_mapping(mapping, cls_name, fld.name)
+            if not expr:
+                lines.append(f"    # UNMAPPED {cls_name}.{fld.name}")
+                continue
+            if fld.hdf5_type not in ("scalar_float", "scalar_int", "scalar_bool", "vector3", "quaternion", "matrix3"):
+                lines.append(f"    # SKIPPED {cls_name}.{fld.name}: type {fld.type_str} cannot be written per body yet")
+                continue
+            lines += ["  " + l for l in _field_entry(fld, expr, "b", cls_name)]
+        lines.append("  ],")
+    for group_name, fields in extra_shapes.items():
+        lines.append(f'  # {group_name}: not in the schema yet (non-normative)')
+        lines.append(f'  "{group_name}": [')
+        for fname, expr in fields.items():
+            h = _EXTRA_SHAPE_FIELD_TYPES.get(fname, "scalar_float")
+            lines.append(f'      ("{fname}", "{h}", True, lambda b: {expr}),')
+        lines.append("  ],")
+    lines.append("}")
+    lines.append("")
+    lines.append(f"_BLOCK_FIELDS = {_BLOCK_FIELDS!r}")
+    lines.append(f"_NOT_IN_ONDEM = {sorted(_NOT_IN_ONDEM)!r}")
+    lines.append(f"_SHAPE_GROUPS = {shape_groups!r}")
+    lines.append("")
+    lines.append("def _shape_group(b):")
+    lines.append('    """/ONDEM/Bodies group of body b; "other" for shapes not handled yet."""')
+    lines.append(f"    try: return _SHAPE_GROUPS.get({shape_type_expr}, \"other\")")
+    lines.append('    except Exception: return "other"')
+    lines.append("")
+    lines.append("def _shape_type(b):")
+    lines.append(f"    try: return str({shape_type_expr})")
+    lines.append('    except Exception: return ""')
+    lines.append("")
 
-    # Build collection loop
-    lines = [
+    lines += [
         "def _export_bodies(f):",
-        '    """Write bodies separated by shape type to /ONDEM/Bodies/ — generated from schema."""',
+        '    """Write the bodies: one PolyData block per display group in /VTKHDF,',
+        '    the per-body fields that are not in the blocks in /ONDEM/Bodies/<shape group>/."""',
+        f"    bodies = {bodies_expr}",
+        "    names = _display_group_names()",
+        "    cols = _collect(bodies, _BODY_FIELDS)",
+        '    body_ids = cols["body_id"]',
+        "    if None in body_ids or len(set(body_ids)) != len(body_ids):",
+        '        raise ValueError("[export_vtkhdf] body ids must be unique and defined")',
+        f"    groups = [{group_expr} for b in bodies]",
+        "    validate_display_groups(names, dict(zip(body_ids, groups)))",
+        "    types = {name: h for name, h, _m, _g in _BODY_FIELDS}",
         "",
+        "    # 1. /VTKHDF: one PolyData block per display group, empty groups included",
+        "    vtkhdf_init_multiblock(f)",
+        "    for gi, name in enumerate(names):",
+        "        idx = [k for k, g in enumerate(groups) if g == gi]",
+        "        sel = lambda col: [col[k] for k in idx]",
+        "        block_fields = [n for n in _BLOCK_FIELDS if n in cols]",
+        "        vtkhdf_write_polydata_block(",
+        "            f, name, sel(body_ids),",
+        '            points=point_array(sel(cols["position"]), 3),',
+        "            point_data={n: column_array(sel(cols[n]), types[n]) for n in block_fields},",
+        '            point_data_attrs={n: {"order": QUATERNION_ORDER} for n in block_fields if types[n] == "quaternion"},',
+        "        )",
+        "",
+        "    # 2. /ONDEM/Bodies/<shape group>: body_id (join key) + fields not in the blocks",
         '    bodies_grp = f.require_group("ONDEM/Bodies")',
+        "    shape_groups = [_shape_group(b) for b in bodies]",
+        "    for sg in sorted(set(shape_groups)):",
+        "        idx = [k for k, s in enumerate(shape_groups) if s == sg]",
+        "        sel = lambda col: [col[k] for k in idx]",
+        "        members = sel(bodies)",
+        "        shape_fields = _SHAPE_FIELDS.get(sg, [])",
+        "        shape_cols = _collect(members, shape_fields)",
+        "        g = bodies_grp.create_group(sg)",
+        '        g.attrs["count"] = len(idx)',
+        '        hdf5_write_column(g, "body_id", sel(body_ids), "scalar_int")',
+        "        for name, h, mandatory, _get in _BODY_FIELDS + shape_fields:",
+        '            if name in _NOT_IN_ONDEM or name == "body_id":',
+        "                continue",
+        "            vals = sel(cols[name]) if name in cols else shape_cols[name]",
+        "            if not mandatory and all(v is None for v in vals):",
+        "                continue",
+        "            hdf5_write_column(g, name, vals, h)",
+        '        if sg == "other":',
+        '            hdf5_write_string_array(g, "shape_type", [_shape_type(b) for b in members])',
+        "            g.attrs[\"note\"] = \"shape type not supported by the ON-DEM schema yet\"",
         "",
-        f"    shape_types = {shape_types}",
+        "    return len(bodies)",
         "",
-        "    for shape_type in shape_types:",
-        "        bodies = [b for b in O.bodies if b is not None and type(b.shape).__name__ == shape_type]",
-        "        if not bodies: continue",
-        "",
-        '        bg = bodies_grp.require_group(shape_type)',
-        "        bg.attrs['count'] = len(bodies)",
-        "",
-        "        # --- Collect body data ---",
     ]
-
-    # Declare accumulator lists for each field
-    for cls_name, fld in all_particle_fields:
-        expr = _lookup_mapping(mapping, cls_name, fld.name)
-        if not expr:
-            continue
-        lines.append(f"        _{fld.name}_list = []")
-
-    lines += [
-        "",
-        "        for b in bodies:",
-        "",
-    ]
-
-    for cls_name, fld in all_particle_fields:
-        expr = _lookup_mapping(mapping, cls_name, fld.name)
-        if not expr:
-            continue
-        lines.append(f"            try: _{fld.name}_list.append({expr})")
-        lines.append(f"            except: _{fld.name}_list.append(None)")
-
-    lines += [
-        "",
-        "    N = len(_body_id_list)",
-        "    if N == 0:",
-        '        print("[export_vtkhdf] Warning: no sphere bodies found")',
-        "        return 0",
-        "",
-        "    # --- Write /VTKHDF/ VTK PolyData structure ---",
-        '    vtk = f.require_group("VTKHDF")',
-        '    _typeStr = "PolyData".encode("ascii")',
-        '    vtk.attrs.create("Type", _typeStr, dtype=h5py.string_dtype("ascii", len(_typeStr)))',
-        '    vtk.attrs.create("Version", data=np.array([1, 0], dtype=np.int64))',
-        "",
-        "    # Points = sphere centres",
-        "    pos_arr = np.array([[p[0],p[1],p[2]] for p in _position_list], dtype=np.float64)",
-        '    vtk.create_dataset("Points", data=pos_arr)',
-        '    vtk.create_dataset("NumberOfPoints", data=np.array([N], dtype=np.int64))',
-        "",
-        "    # Empty cell structures (required by VTK HDF spec for PolyData)",
-        '    for _sec in ["Vertices","Lines","Polygons","Strips"]:',
-        '        _sg = vtk.require_group(_sec)',
-        '        _sg.create_dataset("NumberOfCells",           data=np.array([0], dtype=np.int64))',
-        '        _sg.create_dataset("NumberOfConnectivityIds", data=np.array([0], dtype=np.int64))',
-        '        _sg.create_dataset("Offsets",                 data=np.array([0, 0], dtype=np.int64))',
-        '        _sg.create_dataset("Connectivity",            data=np.zeros(0,   dtype=np.int64))',
-        "",
-        '    pd = vtk.require_group("PointData")',
-        '    pd.attrs["Scalars"] = "radius".encode("ascii")',  # default display hint for ParaView
-        "",
-        "    # --- Write per-particle datasets ---",
-    ]
-
-    # Emit write calls for each collected field
-    for cls_name, fld in all_particle_fields:
-        expr = _lookup_mapping(mapping, cls_name, fld.name)
-        if not expr:
-            continue
-        n = fld.name
-        h = fld.hdf5_type
-        tag = "[mandatory]" if fld.mandatory else "[optional]"
-        lines.append(f"        # {tag} {n}: {fld.type_str} {fld.units}")
-
-        # For optional fields, conditionally write only if at least one value exists
-        if not fld.mandatory:
-            lines.append(f"        if any(v is not None for v in _{n}_list):")
-            ind = "            "
-        else:
-            ind = "        "
-
-        if h in ("scalar_float",):
-            lines.append(f'{ind}hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.float64)')
-        elif h in ("scalar_int",):
-            lines.append(f'{ind}hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.int32)')
-        elif h in ("scalar_bool",):
-            lines.append(f'{ind}hdf5_write_scalar_array(bg, "{n}", _{n}_list, np.int8)')
-        elif h == "vector3":
-            lines.append(f'{ind}hdf5_write_vector3_array(bg, "{n}", _{n}_list)')
-        elif h == "quaternion":
-            lines.append(f'{ind}hdf5_write_quaternion_array(bg, "{n}", _{n}_list)')
-        elif h == "matrix3":
-            lines.append(f'{ind}hdf5_write_matrix3_array(bg, "{n}", _{n}_list)')
-        else:
-            lines.append(f'{ind}# SKIPPED dataset for {n} (type={h})')
-        lines.append("")
-
-    lines.append("")
-    lines.append("    # --- Unified VTK PolyData for all bodies ---")
-    lines.append("    bodies = [b for b in O.bodies if b is not None]")
-    lines.append("    N = len(bodies)")
-    lines.append("    if N == 0:")
-    lines.append('        print("[export_vtkhdf] Warning: no bodies found")')
-    lines.append("        return 0")
-    lines.append("")
-    lines.append('    vtk = f.require_group("VTKHDF")')
-    lines.append('    vtk.attrs.create("Type",    data=np.bytes_("PolyData"))')
-    lines.append('    vtk.attrs.create("Version", data=np.array([2, 0], dtype=np.int64))')
-    lines.append("")
-    lines.append("    # Points = body centres")
-    lines.append("    positions = [b.state.pos for b in bodies]")
-    lines.append("    hdf5_write_vector3_array(vtk, \"Points\", positions)")
-    lines.append('    vtk.create_dataset("NumberOfPoints", data=np.array([N], dtype=np.int64))')
-    lines.append("")
-    lines.append("    # Empty cell structures (required by VTK HDF spec for PolyData)")
-    lines.append('    for _sec in ["Verts","Lines","Polygons","Strips"]:')
-    lines.append('        _sg = vtk.require_group(_sec)')
-    lines.append('        _sg.create_dataset("NumberOfCells",           data=np.array([0], dtype=np.int64))')
-    lines.append('        _sg.create_dataset("NumberOfConnectivityIds", data=np.array([0], dtype=np.int64))')
-    lines.append('        _sg.create_dataset("Offsets",                 data=np.array([0], dtype=np.int64))')
-    lines.append('        _sg.create_dataset("Connectivity",            data=np.array([], dtype=np.int64))')
-    lines.append("")
-    lines.append('    pd = vtk.require_group("PointData")')
-    lines.append("")
-    lines.append("    # Shape types")
-    lines.append("    shape_types_list = [type(b.shape).__name__ for b in bodies]")
-    lines.append('    hdf5_write_string_array(pd, "shape_type", shape_types_list)')
-    lines.append("")
-    lines.append("    return N")
-    lines.append("")
-
     return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Interactions: /ONDEM/Interactions/<type>
+# ---------------------------------------------------------------------------
+
+# Schema interaction classes whose fields are collected (merged in this order)
+_INTERACTION_CLASSES = ["base_interaction", "normal", "shear", "shear_linear", "normal_linear", "normal_hertz"]
+
+# HDF5 types of interaction fields that are not in the schema
+_EXTRA_INTERACTION_TYPES = {
+    "contact_point": "vector3", "overlap": "scalar_float",
+    "reference_radius_1": "scalar_float", "reference_radius_2": "scalar_float",
+    "geom_type": "string", "phys_type": "string",
+    "normal_stiffness": "scalar_float", "shear_stiffness": "scalar_float",
+    "friction_coefficient_interaction": "scalar_float",
+}
 
 
 def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
-    """Generate _export_interactions from interaction schema classes, separated by type."""
+    """Generate _export_interactions: one group per interaction type."""
+    collections = mapping.get("_collections", {})
+    intrs_expr = collections.get("interactions", "[]")
+    type_expr = mapping.get("_interaction_type", "'interaction'")
 
-    # Interaction types to separate
-    intr_types = ['Normal', 'Shear', 'NormalLinear', 'ShearLinear', 'NormalHertz', 'Intr', 'Intr3D']
-
-    # Fields to collect from schema interaction classes
-    intr_classes = ["intr", "normal", "shear", "shear_linear", "normal_linear", "normal_hertz"]
-    intr_classes = [c for c in intr_classes if c in schema.classes]
-
-    all_intr_fields = []
+    lines = [
+        "# Per-interaction fields: (name, hdf5 type, mandatory, getter).",
+        "_INTERACTION_FIELDS = [",
+    ]
     seen = set()
-    for cls_name in intr_classes:
-        cls = schema.classes[cls_name]
+    for cls_name in _INTERACTION_CLASSES:
+        cls = schema.classes.get(cls_name)
+        if not cls:
+            lines.append(f"    # WARNING: schema class {cls_name} not found")
+            continue
         for fld in cls.all_fields:
             if fld.name in seen:
                 continue
             seen.add(fld.name)
-            all_intr_fields.append((cls_name, fld))
-
-    # Extra geometry fields from mapping (not in schema classes directly)
-    geom_extras = mapping.get("_interaction_geometry", {})
-    extra_intr = mapping.get("_extra_interaction_attributes", {})
-
-    lines = [
-        "def _export_interactions(f):",
-        '    """Write /ONDEM/Interactions — generated from interaction schema, separated by type."""',
-        '    ig_root = f.require_group("ONDEM/Interactions")',
-        "",
-        f"    intr_types = {intr_types}",
-        "",
-        "    for phys_type in intr_types:",
-        "        intrs = [i for i in O.interactions if i.isReal and type(i.phys).__name__ == phys_type]",
-        "        if not intrs: continue",
-        "",
-        '        ig = ig_root.require_group(phys_type)',
-        "        ig.attrs['count'] = len(intrs)",
-        "",
-        "        # --- Accumulate per-interaction data ---",
-    ]
-
-    # Schema fields
-    for cls_name, fld in all_intr_fields:
-        expr = _lookup_mapping(mapping, cls_name, fld.name)
-        if not expr:
-            continue
-        lines.append(f"        _{fld.name}_list = []")
-
-    # Geometry extras
-    for fname in geom_extras:
-        lines.append(f"        _{fname}_list = []")
-
-    # Extra attributes
-    for fname in extra_intr:
-        lines.append(f"        _{fname}_list = []")
+            expr = _lookup_mapping(mapping, cls_name, fld.name)
+            if not expr:
+                lines.append(f"    # UNMAPPED {cls_name}.{fld.name}")
+                continue
+            lines += _field_entry(fld, expr, "i", cls_name)
+    for section in ("_interaction_geometry", "_extra_interaction_attributes"):
+        lines.append(f"    # not in the schema (mapping {section})")
+        for fname, expr in mapping.get(section, {}).items():
+            if fname in seen:
+                continue
+            seen.add(fname)
+            h = _EXTRA_INTERACTION_TYPES.get(fname, "scalar_float")
+            lines.append(f'    ("{fname}", "{h}", False, lambda i: {expr}),')
+    lines.append("]")
+    lines.append("")
 
     lines += [
+        "def _interaction_type(i):",
+        f"    try: return snake_case(str({type_expr}))",
+        '    except Exception: return "unknown"',
         "",
-        "        for i in intrs:",
+        "def _export_interactions(f):",
+        '    """Write /ONDEM/Interactions/<type>/: one group per interaction type (snake_case)."""',
+        '    ig_root = f.require_group("ONDEM/Interactions")',
+        f"    intrs = {intrs_expr}",
+        "    by_type = {}",
+        "    for i in intrs:",
+        "        by_type.setdefault(_interaction_type(i), []).append(i)",
         "",
-    ]
-
-    for cls_name, fld in all_intr_fields:
-        expr = _lookup_mapping(mapping, cls_name, fld.name)
-        if not expr:
-            continue
-        lines.append(f"            try: _{fld.name}_list.append({expr})")
-        lines.append(f"            except: _{fld.name}_list.append(None)")
-
-    for fname, expr in geom_extras.items():
-        lines.append(f"            try: _{fname}_list.append({expr})")
-        lines.append(f"            except: _{fname}_list.append(None)")
-
-    for fname, expr in extra_intr.items():
-        lines.append(f"            try: _{fname}_list.append({expr})")
-        lines.append(f"            except: _{fname}_list.append(None)")
-
-    lines.append("")
-    lines.append("        # --- Write datasets ---")
-
-    def _emit_dataset(n, h, lines, indent="        "):
-        """Emit a dataset write with configurable indentation."""
-        if h in ("scalar_float",):
-            lines.append(f'{indent}hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.float64)')
-        elif h in ("scalar_int",):
-            lines.append(f'{indent}hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.int32)')
-        elif h in ("scalar_bool",):
-            lines.append(f'{indent}hdf5_write_scalar_array(ig, "{n}", _{n}_list, np.int8)')
-        elif h == "string":
-            lines.append(f'{indent}hdf5_write_string_array(ig, "{n}", _{n}_list)')
-        elif h == "vector3":
-            lines.append(f'{indent}hdf5_write_vector3_array(ig, "{n}", _{n}_list)')
-        elif h == "quaternion":
-            lines.append(f'{indent}hdf5_write_quaternion_array(ig, "{n}", _{n}_list)')
-        else:
-            lines.append(f'{indent}# SKIPPED {n} (type={h})')
-
-    for cls_name, fld in all_intr_fields:
-        expr = _lookup_mapping(mapping, cls_name, fld.name)
-        if not expr:
-            continue
-        lines.append(f"        # {fld.name}: {fld.type_str} {fld.units}")
-        # Skip if optional and all None
-        if not fld.mandatory:
-            lines.append(f"        if any(v is not None for v in _{fld.name}_list):")
-            _emit_dataset(fld.name, fld.hdf5_type, lines, indent="            ")
-        else:
-            _emit_dataset(fld.name, fld.hdf5_type, lines)
-        lines.append("")
-
-    # Geometry extras (all Vector3 or scalar float) — always check presence
-    geom_types = {
-        "contact_point": "vector3", "overlap": "scalar_float",
-        "reference_radius_1": "scalar_float", "reference_radius_2": "scalar_float"
-    }
-    for fname in geom_extras:
-        h = geom_types.get(fname, "scalar_float")
-        lines.append(f"        if any(v is not None for v in _{fname}_list):")
-        _emit_dataset(fname, h, lines, indent="            ")
-        lines.append("")
-
-    # Extra attributes (scalars + vectors) — check presence
-    extra_types = {
-        "geom_type": "string", "phys_type": "string",
-        "normal_stiffness": "scalar_float", "shear_stiffness": "scalar_float",
-        "friction_coefficient_interaction": "scalar_float",
-        "normal_damping_ratio": "scalar_float", "shear_damping_ratio": "scalar_float",
-        "isSliding": "scalar_int",
-        "shear_force_elastic": "vector3", "shear_force_viscous": "vector3",
-        "normal_force_viscous": "scalar_float",
-    }
-    for fname, expr in extra_intr.items():
-        h = extra_types.get(fname, "scalar_float")
-        lines.append(f"        if any(v is not None for v in _{fname}_list):")
-        _emit_dataset(fname, h, lines, indent="            ")
-        lines.append("")
-
-    lines.append("")
-    lines.append("    return")
-
-    return "\n".join(lines) + "\n"
-
-
-def _gen_nonsphere_exporter(mapping: dict) -> str:
-    """Generate _export_nonsphere_bodies (walls, facets, boxes)."""
-    wall_map = mapping.get("_wall", {})
-
-    lines = [
-        "def _export_nonsphere_bodies(f):",
-        '    """Write /ONDEM/Bodies — walls, facets, boxes."""',
-        '    grp = f.require_group("ONDEM/Bodies")',
-        "    walls, facets, boxes, others = [], [], [], []",
-        "    for b in O.bodies:",
-        "        if b is None: continue",
-        "        stype = type(b.shape).__name__",
-        "        if stype == 'Sphere': continue",
-        "        elif stype == 'Wall':      walls.append(b)",
-        "        elif stype == 'Facet':     facets.append(b)",
-        "        elif stype == 'Box':       boxes.append(b)",
-        "        else:                      others.append(b)",
+        "    for itype in sorted(by_type):",
+        "        members = by_type[itype]",
+        "        ig = ig_root.create_group(itype)",
+        '        ig.attrs["count"] = len(members)',
+        "        cols = _collect(members, _INTERACTION_FIELDS)",
+        "        for name, h, mandatory, _get in _INTERACTION_FIELDS:",
+        "            vals = cols[name]",
+        "            if not mandatory and all(v is None for v in vals):",
+        "                continue",
+        "            hdf5_write_column(ig, name, vals, h)",
         "",
-        "    # --- Walls ---",
-        "    if walls:",
-        "        wg = grp.require_group('Walls')",
-        "        wg.create_dataset('body_id',     data=np.array([b.id for b in walls],            dtype=np.int32))",
-        "        wg.create_dataset('material_id', data=np.array([b.material.id for b in walls],   dtype=np.int32))",
-        f"        wg.create_dataset('axis',        data=np.array([{wall_map.get('axis','b.shape.axis')} for b in walls], dtype=np.int32))",
-        f"        wg.create_dataset('sense',       data=np.array([{wall_map.get('sense','b.shape.sense')} for b in walls], dtype=np.int32))",
-        f"        wg.create_dataset('position',    data=np.array([[b.state.pos[0],b.state.pos[1],b.state.pos[2]] for b in walls], dtype=np.float64))",
-        "        wg.attrs['shape_type'] = 'wall'",
-        "        wg.attrs['count'] = len(walls)",
-        "",
-        "    # --- Facets ---",
-        "    if facets:",
-        "        fg = grp.require_group('Facets')",
-        "        fg.create_dataset('body_id',     data=np.array([b.id for b in facets], dtype=np.int32))",
-        "        fg.create_dataset('material_id', data=np.array([b.material.id for b in facets], dtype=np.int32))",
-        "        fg.create_dataset('vertices',    data=np.array([[[v[0],v[1],v[2]] for v in b.shape.vertices] for b in facets], dtype=np.float64))",
-        "        fg.create_dataset('normal',      data=np.array([[b.shape.normal[0],b.shape.normal[1],b.shape.normal[2]] for b in facets], dtype=np.float64))",
-        "        fg.create_dataset('position',    data=np.array([[b.state.pos[0],b.state.pos[1],b.state.pos[2]] for b in facets], dtype=np.float64))",
-        "        fg.attrs['shape_type'] = 'facet'",
-        "        fg.attrs['count'] = len(facets)",
-        "",
-        "    # --- Boxes (ON-DEM schema: box.dimensions) ---",
-        "    if boxes:",
-        "        bg = grp.require_group('Boxes')",
-        "        bg.create_dataset('body_id',     data=np.array([b.id for b in boxes], dtype=np.int32))",
-        "        bg.create_dataset('material_id', data=np.array([b.material.id for b in boxes], dtype=np.int32))",
-        "        bg.create_dataset('dimensions',  data=np.array([[b.shape.extents[0]*2,b.shape.extents[1]*2,b.shape.extents[2]*2] for b in boxes], dtype=np.float64))",
-        "        bg.create_dataset('position',    data=np.array([[b.state.pos[0],b.state.pos[1],b.state.pos[2]] for b in boxes], dtype=np.float64))",
-        "        bg.create_dataset('orientation', data=np.array([[b.state.ori[0],b.state.ori[1],b.state.ori[2],b.state.ori[3]] for b in boxes], dtype=np.float64))",
-        "        bg.attrs['shape_type'] = 'box'",
-        "        bg.attrs['count'] = len(boxes)",
-        "",
-        "    # --- Other shapes (best effort) ---",
-        "    if others:",
-        "        og = grp.require_group('Other')",
-        "        og.create_dataset('body_id', data=np.array([b.id for b in others], dtype=np.int32))",
-        "        _dt = h5py.string_dtype()",
-        "        _ds = og.create_dataset('shape_type', (len(others),), dtype=_dt)",
-        "        for _ii, b in enumerate(others): _ds[_ii] = type(b.shape).__name__",
-        "        og.attrs['note'] = 'shape type not fully supported by ON-DEM schema yet'",
+        "    return len(intrs)",
         "",
     ]
     return "\n".join(lines) + "\n"
 
 
-def _gen_main_function(schema_dir: str, mapping_path: str) -> str:
+def _gen_main_function(schema_dir: str, mapping_path: str, mapping: dict) -> str:
+    time_expr = mapping.get("scene", {}).get("time", "float('nan')")
     return f'''\
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def export_vtkhdf(filename):
-    """Export the current YADE simulation state to an ON-DEM VTKHDF file.
+def export_vtkhdf(filename, display_group_names=None, display_group=None):
+    """Export the current simulation state to an ON-DEM VTKHDF file (one timestep).
 
     Generated from schema: {schema_dir}
     Mapping file:          {mapping_path}
@@ -605,34 +547,48 @@ def export_vtkhdf(filename):
     ----------
     filename : str
         Output file path (should end in .vtkhdf or .hdf).
+    display_group_names : list of str, optional
+        scene.display_group_names: one VTKHDF block per name, in this order.
+        Default ['all'].
+    display_group : dict or callable, optional
+        base_body.display_group of each body, an index into display_group_names:
+        a dict {{body_id: index}} (bodies not in the dict get 0) or a callable
+        body -> index. Default: every body in group 0.
+
+    Raises ValueError (and writes no file) if a name or an index is invalid.
     """
-    with h5py.File(filename, "w") as f:
+    global _DISPLAY_GROUP_NAMES, _DISPLAY_GROUP_SOURCE
+    _DISPLAY_GROUP_NAMES = list(display_group_names) if display_group_names is not None else ["all"]
+    _DISPLAY_GROUP_SOURCE = display_group
 
-        # 1. VTK PolyData for all bodies (/VTKHDF/)
-        n_bodies = _export_bodies(f)
+    try:
+        with h5py.File(filename, "w") as f:
 
-        # 2. Scene metadata
-        _export_scene(f)
+            # 1. Bodies: /VTKHDF blocks (one per display group) + /ONDEM/Bodies
+            n_bodies = _export_bodies(f)
 
-        # 3. Materials
-        _export_materials(f)
+            # 2. Scene metadata (includes display_group_names)
+            _export_scene(f)
 
-        # 4. Non-sphere bodies
-        _export_nonsphere_bodies(f)
+            # 3. Materials
+            _export_materials(f)
 
-        # 5. Interactions
-        _export_interactions(f)
+            # 4. Interactions
+            n_intrs = _export_interactions(f)
 
-        # Top-level metadata
-        f.attrs["file_format"]         = "ON-DEM VTKHDF"
-        f.attrs["file_format_version"] = "0.1-draft"
-        f.attrs["source_code"]         = "YADE"
-        f.attrs["schema_dir"]          = "{schema_dir}"
-        f.attrs["mapping_file"]        = "{mapping_path}"
+            # Top-level metadata
+            f.attrs["file_format"]         = "ON-DEM VTKHDF"
+            f.attrs["file_format_version"] = "0.2-draft"
+            f.attrs["schema_dir"]          = "{schema_dir}"
+            f.attrs["mapping_file"]        = "{mapping_path}"
+    except Exception:
+        # do not leave a half-written file behind
+        if os.path.exists(filename):
+            os.remove(filename)
+        raise
 
-    n_intrs = sum(1 for i in O.interactions if i.isReal)
-    print(f"[export_vtkhdf] Exported {{n_bodies}} bodies, {{n_intrs}} interactions "
-          f"at t={{O.time:.6g}} to \\'{{filename}}\\'")
+    print(f"[export_vtkhdf] Exported {{n_bodies}} bodies in {{len(_DISPLAY_GROUP_NAMES)}} display group(s), "
+          f"{{n_intrs}} interactions at t={{{time_expr}:.6g}} to \'{{filename}}\'")
 
 
 if __name__ == "__main__":
@@ -657,17 +613,17 @@ def generate(schema_dir: str, mapping_path: str, out_path: str):
     sections = [
         _gen_header(schema_dir, mapping_path),
         _gen_helpers(),
+        _gen_display_group_helpers(mapping),
         _gen_scene_exporter(schema, mapping),
         _gen_materials_exporter(schema, mapping),
-        _gen_spheres_exporter(schema, mapping),
+        _gen_bodies_exporter(schema, mapping),
         _gen_interactions_exporter(schema, mapping),
-        _gen_nonsphere_exporter(mapping),
-        _gen_main_function(schema_dir, mapping_path),
+        _gen_main_function(schema_dir, mapping_path, mapping),
     ]
 
     output = "\n".join(sections)
 
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(output)
 
     print(f"[codegen_yade] Written to: {out_path}")

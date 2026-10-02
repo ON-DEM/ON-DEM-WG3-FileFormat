@@ -1,30 +1,58 @@
 {
   "_comment": "ON-DEM schema field → YADE Python API mapping. Verified against FrictPhys and ScGeom attributes for Law2_ScGeom_FrictPhys_CundallStrack.",
 
+  "_collections": {
+    "bodies":       "[b for b in O.bodies if b is not None]",
+    "interactions": "[i for i in O.interactions if i.isReal]"
+  },
+
   "scene": {
     "time":      "O.time",
     "timestep":  "O.dt",
     "gravity":   "_get_gravity()",
-    "units":     "['second', 'meter', 'kilogram']"
+    "units":     "['second', 'meter', 'kilogram']",
+    "display_group_names": "_display_group_names()"
   },
 
-  "body": {
+  "base_body": {
     "body_id":    "b.id",
     "material_id":"b.material.id",
-    "clump_id":   "b.clumpId"
+    "clump_id":   "b.clumpId",
+    "display_group": "_display_group(b)"
   },
 
-  "state": {
+  "base_state": {
     "position":         "b.state.pos",
     "velocity":         "b.state.vel",
     "orientation":      "b.state.ori",
     "angular_velocity": "b.state.angVel",
     "mass":             "b.state.mass",
-    "inertia":          "b.state.inertia",
+    "inertia":          "_diag3(b.state.inertia)",
     "volume":           "_sphere_volume(b)"
   },
 
-  "thermal_state": {
+  "_shape_type": "type(b.shape).__name__",
+
+  "_shape_groups": {
+    "Sphere":    "sphere",
+    "Box":       "box",
+    "Polyhedra": "polyhedron",
+    "Wall":      "wall",
+    "Facet":     "facet"
+  },
+
+  "_extra_shapes": {
+    "wall": {
+      "axis":  "b.shape.axis",
+      "sense": "b.shape.sense"
+    },
+    "facet": {
+      "vertices": "[[v[0],v[1],v[2]] for v in b.shape.vertices]",
+      "normal":   "b.shape.normal"
+    }
+  },
+
+  "thermal": {
     "temperature": "b.state.T"
   },
 
@@ -69,7 +97,9 @@
     "dissipative_constant": "mat.alpha"
   },
 
-  "intr": {
+  "_interaction_type": "type(i.phys).__name__",
+
+  "base_interaction": {
     "id1":      "i.id1",
     "id2":      "i.id2",
     "virtual":  "not i.isReal",
@@ -103,12 +133,6 @@
     "overlap":            "i.geom.penetrationDepth",
     "reference_radius_1": "i.geom.refR1",
     "reference_radius_2": "i.geom.refR2"
-  },
-
-  "_wall": {
-    "axis":     "b.shape.axis",
-    "sense":    "b.shape.sense",
-    "position": "b.state.pos"
   },
 
   "_extra_material_attributes": {
