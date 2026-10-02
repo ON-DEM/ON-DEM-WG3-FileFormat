@@ -183,7 +183,7 @@ O.reset()
 set_engines()
 r = import_vtkhdf(out)
 check(r["display_group_names"] == NAMES, f"display_group_names {r['display_group_names']}")
-check(r["skipped_ids"] == [], f"skipped bodies {r['skipped_ids']}")
+check(r["interaction_count"] == n_real, f"{r['interaction_count']} contacts restored, {n_real} in the file")
 check(all(s == n for s, n in r["id_map"].items()), "body ids unchanged after import into an empty scene")
 check(len(O.bodies) == len(before), f"{len(O.bodies)} bodies after import, {len(before)} before")
 
@@ -237,6 +237,32 @@ try:
 except ValueError as e:
     check("young_modulus" in str(e), f"error names the missing field: {e}")
     print("  missing field rejected:", e)
+
+# ---- No engines: the importer must refuse before touching the scene ----
+O.reset()
+try:
+    import_vtkhdf(out)
+    check(False, "import without engines must raise")
+except RuntimeError as e:
+    check("engines" in str(e) and len(O.bodies) == 0, f"no-engines error and empty scene: {e}")
+    print("  no engines rejected:", str(e)[:90], "...")
+
+# ---- Unsupported contact type: ValueError naming it, nothing created ----
+unsupported = os.path.join(tempfile.gettempdir(), "test_box_spheres_bad_contact.vtkhdf")
+shutil.copy(out, unsupported)
+with h5py.File(unsupported, "a") as f:
+    g = f["ONDEM/Interactions"][list(f["ONDEM/Interactions"])[0]]
+    del g["phys_type"]
+    g.create_dataset("phys_type", data=["MindlinPhys"] * int(g.attrs["count"]), dtype=h5py.string_dtype())
+O.reset()
+set_engines()
+try:
+    import_vtkhdf(unsupported)
+    check(False, "import of an unsupported contact type must raise")
+except ValueError as e:
+    check("MindlinPhys" in str(e) and len(O.bodies) == 0 and len(O.materials) == 0,
+          f"unsupported contact type named, scene untouched: {e}")
+    print("  unsupported contact type rejected:", str(e).splitlines()[1].strip())
 
 print(f"Files: {out}, {out2}")
 if failures:

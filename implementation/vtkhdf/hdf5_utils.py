@@ -464,3 +464,28 @@ def ondem_read_bodies(f) -> dict:
                 rec[k] = v[i]
             out[bid] = rec
     return out
+
+
+def ondem_read_interactions(f) -> list:
+    """Read /ONDEM/Interactions/<type>/, one record per interaction, in file order.
+
+    Returns a list of {"type_group": name, <field>: value} with every dataset
+    whose first dimension is the group's number of interactions. Strings are
+    decoded.
+    """
+    out = []
+    if "ONDEM/Interactions" not in f:
+        return out
+    for t, g in f["ONDEM/Interactions"].items():
+        n = len(g["id1"])
+        fields = {}
+        for k, ds in g.items():
+            if not isinstance(ds, h5py.Dataset) or ds.shape[:1] != (n,):
+                continue
+            fields[k] = ds.asstr()[:] if h5py.check_string_dtype(ds.dtype) else ds[:]
+        for i in range(n):
+            rec = {"type_group": t}
+            for k, v in fields.items():
+                rec[k] = v[i]
+            out.append(rec)
+    return out

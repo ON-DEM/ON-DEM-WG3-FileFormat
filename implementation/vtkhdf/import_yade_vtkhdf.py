@@ -7,17 +7,20 @@ YADE simulation state. Restart reads the whole file: the VTKHDF blocks (body
 positions and the block fields) and /ONDEM (everything else), joined on
 body_id.
 
+Create O.engines before importing: engines cannot come from the file.
+
 Restored:
   - Scene metadata  (dt, gravity; time is only printed, O.time is read-only)
   - Materials       (FrictMat from /ONDEM/Materials/)
   - Spheres         (blocks + /ONDEM/Bodies/sphere/)
   - Walls           (blocks + /ONDEM/Bodies/wall/)
+  - Contacts        (/ONDEM/Interactions/: every real contact is rebuilt with
+                     utils.createInteraction and gets its stored history:
+                     normal, shear force, stiffnesses, friction)
   - Display groups  (returned, so they can be passed back to export_vtkhdf)
-Not restored:
-  - Interactions: YADE rebuilds contacts with the collider on the first
-    step, so the contact history (shear force, sliding state) is lost.
-  - Boxes, facets, polyhedra and other shapes (reported as skipped).
-  - Clumps (clump_id is read but clumps are not rebuilt).
+Refused (ValueError, nothing is created):
+  - Shapes other than spheres and walls, clumps.
+  - Contact types other than (ScGeom, FrictPhys).
 
 File layout expected (written by the exporter):
   /VTKHDF/                       MultiBlockDataSet
@@ -37,7 +40,8 @@ File layout expected (written by the exporter):
     Bodies/<shape group>/        body_id + the fields not in the blocks
                                  (material_id, clump_id, mass, inertia, volume,
                                  wall axis/sense, ...)
-    Interactions/<type>/         not used for import
+    Interactions/<type>/         id1, id2, normal, normal_force, shear_force, kn, ks,
+                                 friction_coefficient, geom_type, phys_type, ...
 
 A body's display group is the index of its block's name in
 display_group_names.
@@ -78,7 +82,7 @@ except ImportError:
 
 from yade import O, utils, Vector3, Quaternion, FrictMat
 
-from hdf5_utils import vtkhdf_read_blocks, ondem_read_bodies
+from hdf5_utils import vtkhdf_read_blocks, ondem_read_bodies, ondem_read_interactions
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +107,10 @@ def _read_scene(f):
     return time, dt, _v3(grav), names
 
 
+# ---------------------------------------------------------------------------
+# Reading and checking the file (nothing is created in the scene here)
+# ---------------------------------------------------------------------------
+
 # Material fields a FrictMat needs (provisional mapping, see implementation/README.md):
 # base_material.id, density; hertz_elastic.young_modulus, poisson_ratio;
 # frictional_3D.shear_friction = tan(frictionAngle)
@@ -111,18 +119,15 @@ _FRICTMAT_FIELDS = ["id", "density", "young_modulus", "poisson_ratio", "shear_fr
 
 def _read_materials(f):
     """
-    Reconstruct YADE materials from /ONDEM/Materials/<id>/ groups.
-    Returns a dict  {stored_mat_id (int) -> yade_material_index}.
+    Read /ONDEM/Materials/<id>/ groups.
+    Returns {stored material id: keyword arguments of FrictMat}.
 
     Every field of _FRICTMAT_FIELDS must be present; there are no defaults.
     Raises ValueError naming the material and the missing fields, or if the
     material is not a FrictMat.
     """
-    mat_grp = f["ONDEM/Materials"]
-    id_map  = {}   # stored id -> O.materials index
-
-    for key in mat_grp:
-        g   = mat_grp[key]
+    out = {}
+    for key, g in f["ONDEM/Materials"].items():
         mtype = g["material_type"][()].decode() if "material_type" in g else None
         if mtype != "FrictMat":
             raise ValueError(f"[import] /ONDEM/Materials/{key}: material_type {mtype!r} is not supported "
@@ -131,27 +136,14 @@ def _read_materials(f):
         if missing:
             raise ValueError(f"[import] /ONDEM/Materials/{key}: missing field(s) {missing}; "
                              f"a FrictMat needs {_FRICTMAT_FIELDS}")
-
-        mid      = int(g["id"][()])
-        density  = float(g["density"][()])
-        young    = float(g["young_modulus"][()])
-        poisson  = float(g["poisson_ratio"][()])
-        fric_rad = float(np.arctan(float(g["shear_friction"][()])))
-        label    = g["label"][()].decode()     if "label"    in g else ""
-
-        yade_idx = O.materials.append(
-            FrictMat(
-                density       = density,
-                young         = young,
-                poisson       = poisson,
-                frictionAngle = fric_rad,
-                label         = label,
-            )
+        out[int(g["id"][()])] = dict(
+            density       = float(g["density"][()]),
+            young         = float(g["young_modulus"][()]),
+            poisson       = float(g["poisson_ratio"][()]),
+            frictionAngle = float(np.arctan(float(g["shear_friction"][()]))),
+            label         = g["label"][()].decode() if "label" in g else "",
         )
-        id_map[mid] = yade_idx
-        print(f"[import] Material id={mid} → O.materials[{yade_idx}]  label='{label}'")
-
-    return id_map
+    return out
 
 
 def _read_bodies(f, names):
@@ -179,6 +171,74 @@ def _read_bodies(f, names):
         bodies[bid] = merged
     return bodies
 
+
+def _check_engines(restore_gravity):
+    """Engines cannot come from the file: they must exist before the import."""
+    names = [type(e).__name__ for e in O.engines]
+    missing = []
+    if "InteractionLoop" not in names:
+        missing.append("InteractionLoop (contacts are rebuilt with its functors)")
+    if restore_gravity and "NewtonIntegrator" not in names:
+        missing.append("NewtonIntegrator (gravity is restored on it)")
+    if missing:
+        raise RuntimeError("[import] create O.engines before import_vtkhdf; engines cannot come from the file. "
+                           "Missing: " + "; ".join(missing))
+
+
+def _short(ids, n=20):
+    ids = sorted(ids)
+    return f"{ids[:n]}" + (f" (and {len(ids) - n} more)" if len(ids) > n else "")
+
+
+def _check_file(bodies, materials, interactions):
+    """Collect every reason why the file cannot be restored; raise them all at once."""
+    errors = []
+
+    unsupported = {}
+    for bid, rec in bodies.items():
+        if rec["shape_group"] not in _MAKERS:
+            unsupported.setdefault(rec["shape_group"], []).append(bid)
+    for sg, ids in sorted(unsupported.items()):
+        errors.append(f"shape group '{sg}' is not supported by this importer: body_id {_short(ids)}")
+
+    clumped = [bid for bid, rec in bodies.items() if int(rec.get("clump_id", -1)) >= 0]
+    if clumped:
+        errors.append(f"clumps are not rebuilt by this importer: body_id {_short(clumped)}")
+
+    no_mat = [bid for bid, rec in bodies.items() if int(rec.get("material_id", -1)) not in materials]
+    if no_mat:
+        errors.append(f"material_id not found in /ONDEM/Materials: body_id {_short(no_mat)}")
+
+    bad_types, bad_ids, missing, virtual = {}, [], {}, 0
+    for rec in interactions:
+        key = (str(rec.get("geom_type", "?")), str(rec.get("phys_type", "?")))
+        if key not in _CONTACT_TYPES:
+            bad_types[key] = bad_types.get(key, 0) + 1
+            continue
+        if int(rec["id1"]) not in bodies or int(rec["id2"]) not in bodies:
+            bad_ids.append((int(rec["id1"]), int(rec["id2"])))
+        lacking = tuple(k for k in _CONTACT_TYPES[key][0] if k not in rec)
+        if lacking:
+            missing[lacking] = missing.get(lacking, 0) + 1
+        if int(rec.get("virtual", 0)):
+            virtual += 1
+    for (gt, pt), n in sorted(bad_types.items()):
+        errors.append(f"{n} interaction(s) of contact type ({gt}, {pt}) cannot be restored; "
+                      f"supported: {sorted(_CONTACT_TYPES)}")
+    if bad_ids:
+        errors.append(f"{len(bad_ids)} interaction(s) refer to bodies that are not in the file: {bad_ids[:10]}")
+    for lacking, n in missing.items():
+        errors.append(f"{n} interaction(s) lack the field(s) {list(lacking)}")
+    if virtual:
+        errors.append(f"{virtual} virtual (not real) interaction(s): only real contacts can be restored")
+
+    if errors:
+        raise ValueError("[import] the file cannot be restored, nothing was created:\n  - " + "\n  - ".join(errors))
+
+
+# ---------------------------------------------------------------------------
+# Building the scene
+# ---------------------------------------------------------------------------
 
 def _set_state(b, rec):
     """Set the dynamic state of YADE body b from a joined record."""
@@ -218,6 +278,50 @@ def _make_wall(rec, yade_mat):
 _MAKERS = {"sphere": _make_sphere, "wall": _make_wall}
 
 
+def _restore_frict(i, rec):
+    """Contact history of a ScGeom + FrictPhys contact (e.g. Law2_ScGeom_FrictPhys_CundallStrack).
+
+    The normal is history too: on the next step the shear force is rotated
+    from this normal to the new one.
+    """
+    n = _v3(rec["normal"])
+    i.geom.normal = n
+    if "contact_point" in rec:
+        i.geom.contactPoint = _v3(rec["contact_point"])
+    if "reference_radius_1" in rec:
+        i.geom.refR1 = float(rec["reference_radius_1"])
+    if "reference_radius_2" in rec:
+        i.geom.refR2 = float(rec["reference_radius_2"])
+    i.phys.kn = float(rec["kn"])
+    i.phys.ks = float(rec["ks"])
+    i.phys.tangensOfFrictionAngle = float(rec["friction_coefficient"])
+    i.phys.shearForce = _v3(rec["shear_force"])
+    # normal_force is positive in traction: the force vector is -normal_force * normal
+    i.phys.normalForce = n * (-float(rec["normal_force"]))
+    if "frictional_dissipation" in rec:
+        i.phys.frictDissip = float(rec["frictional_dissipation"])
+
+
+# Contact types this importer can restore: (geom type, phys type) -> (required fields, restorer)
+_CONTACT_TYPES = {
+    ("ScGeom", "FrictPhys"): (["normal", "normal_force", "shear_force", "kn", "ks", "friction_coefficient"],
+                              _restore_frict),
+}
+
+
+def _restore_interactions(interactions, id_map):
+    for rec in interactions:
+        key = (str(rec["geom_type"]), str(rec["phys_type"]))
+        id1, id2 = id_map[int(rec["id1"])], id_map[int(rec["id2"])]
+        i = utils.createInteraction(id1, id2)
+        got = (type(i.geom).__name__, type(i.phys).__name__)
+        if got != key:
+            raise ValueError(f"[import] the engines create contact type {got} for bodies ({id1}, {id2}), "
+                             f"the file has {key}: the engines differ from the ones that wrote the file "
+                             f"(the scene is partially built; call O.reset())")
+        _CONTACT_TYPES[key][1](i, rec)
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -225,98 +329,98 @@ _MAKERS = {"sphere": _make_sphere, "wall": _make_wall}
 def import_vtkhdf(filename,
                   restore_time=True,
                   restore_dt=True,
-                  restore_gravity=True):
+                  restore_gravity=True,
+                  restore_interactions=True):
     """
     Load a VTKHDF file into the current YADE scene.
 
+    Create O.engines first: engines cannot come from the file, contacts are
+    rebuilt with the functors of the InteractionLoop, and gravity is set on
+    the NewtonIntegrator.
+
     Parameters
     ----------
-    filename        : str   Path to the .vtkhdf file.
-    restore_time    : bool  Print the saved time (O.time is read-only in YADE).
-    restore_dt      : bool  Set O.dt   from the file (default True).
-    restore_gravity : bool  Set gravity on NewtonIntegrator (default True).
-                            Only works if a NewtonIntegrator already exists
-                            in O.engines.
+    filename             : str   Path to the .vtkhdf file.
+    restore_time         : bool  Print the saved time (O.time is read-only in YADE).
+    restore_dt           : bool  Set O.dt from the file (default True).
+    restore_gravity      : bool  Set gravity on the NewtonIntegrator (default True).
+    restore_interactions : bool  Rebuild every contact of /ONDEM/Interactions with its
+                                 stored history (default True). False: contacts are
+                                 rebuilt by the collider on the first step, without history.
+
+    The whole file is read and checked before anything is created: an
+    unsupported shape, contact type, missing field or missing material raises
+    ValueError and leaves the scene untouched.
 
     Bodies are appended in increasing stored body_id. Into an empty scene,
-    with ids 0..N-1 in the file and every shape supported, YADE gives them
-    the same ids; otherwise "id_map" says where each body went.
+    with ids 0..N-1 in the file, YADE gives them the same ids; otherwise
+    "id_map" says where each body went.
 
     Returns
     -------
     dict with keys:
         'sphere_ids'          – YADE body ids of the restored spheres
         'wall_ids'            – YADE body ids of the restored walls
-        'skipped_ids'         – stored body ids not restored (unsupported shape)
+        'interaction_count'   – number of contacts rebuilt with their history
         'id_map'              – {stored body_id -> YADE body id}
         'mat_id_map'          – {stored material id -> O.materials index}
         'display_group_names' – scene.display_group_names from the file
         'display_group'       – {YADE body id -> display group index}
     """
     print(f"[import] Reading '{filename}' ...")
+    _check_engines(restore_gravity)
 
     with h5py.File(filename, "r") as f:
-
-        # 1. Scene metadata
         time, dt, gravity, names = _read_scene(f)
+        materials    = _read_materials(f)
+        bodies       = _read_bodies(f, names)
+        interactions = ondem_read_interactions(f) if restore_interactions else []
 
-        if restore_time:
-            # O.time and O.iter are both read-only in YADE (computed properties).
-            # Print the saved value for reference only.
-            print(f"[import] Note: saved time={time:.6g} s — O.time is read-only in YADE, resuming from iter=0.")
+    _check_file(bodies, materials, interactions)
 
-        if restore_dt:
-            O.dt = dt
-            print(f"[import] O.dt    = {dt}")
+    # --- from here on the scene is modified ---
+    if restore_time:
+        # O.time and O.iter are both read-only in YADE (computed properties).
+        print(f"[import] Note: saved time={time:.6g} s — O.time is read-only in YADE, resuming from iter=0.")
+    if restore_dt:
+        O.dt = dt
+        print(f"[import] O.dt    = {dt}")
+    if restore_gravity:
+        for eng in O.engines:
+            if type(eng).__name__ == "NewtonIntegrator":
+                eng.gravity = gravity
+        print(f"[import] gravity = {gravity}")
 
-        if restore_gravity:
-            for eng in O.engines:
-                if type(eng).__name__ == "NewtonIntegrator":
-                    eng.gravity = gravity
-                    print(f"[import] gravity = {gravity}")
-                    break
-            else:
-                print("[import] Warning: no NewtonIntegrator found — gravity not restored.")
+    mat_id_map = {}
+    for mid, kw in materials.items():
+        mat_id_map[mid] = O.materials.append(FrictMat(**kw))
+        print(f"[import] Material id={mid} → O.materials[{mat_id_map[mid]}]  label='{kw['label']}'")
 
-        # 2. Materials
-        mat_id_map = _read_materials(f)
-
-        # 3. Bodies: blocks + /ONDEM joined on body_id
-        bodies = _read_bodies(f, names)
-
-    sphere_ids, wall_ids, skipped = [], [], {}
+    sphere_ids, wall_ids = [], []
     id_map, display_group = {}, {}
     for bid in sorted(bodies):
         rec = bodies[bid]
         sg = rec["shape_group"]
-        make = _MAKERS.get(sg)
-        if make is None:
-            skipped.setdefault(sg, []).append(bid)
-            continue
-        yade_mat = mat_id_map.get(int(rec.get("material_id", -1)), 0)
-        b = make(rec, yade_mat)
+        b = _MAKERS[sg](rec, mat_id_map[int(rec["material_id"])])
         new_id = O.bodies.append(b)
         id_map[bid] = new_id
         display_group[new_id] = rec["display_group"]
         (sphere_ids if sg == "sphere" else wall_ids).append(new_id)
 
-    for sg, ids in skipped.items():
-        print(f"[import] Warning: {len(ids)} body(ies) of shape group '{sg}' not restored "
-              f"(not supported by this importer): body_id {ids[:20]}")
-    clumped = [bid for bid, rec in bodies.items() if int(rec.get("clump_id", -1)) >= 0]
-    if clumped:
-        print(f"[import] Warning: {len(clumped)} body(ies) belong to clumps; clumps are not rebuilt.")
+    _restore_interactions(interactions, id_map)
+
     moved = {s: n for s, n in id_map.items() if s != n}
     if moved:
         print(f"[import] Note: {len(moved)} body id(s) changed (scene not empty or ids not contiguous); see 'id_map'.")
 
     print(f"[import] Done. {len(sphere_ids)} sphere(s), {len(wall_ids)} wall(s) "
-          f"in {len(names)} display group(s) {names} → {len(O.bodies)} total bodies in scene.")
+          f"in {len(names)} display group(s) {names}, {len(interactions)} contact(s) with history "
+          f"→ {len(O.bodies)} total bodies in scene.")
 
     return {
         "sphere_ids"          : sphere_ids,
         "wall_ids"            : wall_ids,
-        "skipped_ids"         : sorted(i for ids in skipped.values() for i in ids),
+        "interaction_count"   : len(interactions),
         "id_map"              : id_map,
         "mat_id_map"          : mat_id_map,
         "display_group_names" : names,
