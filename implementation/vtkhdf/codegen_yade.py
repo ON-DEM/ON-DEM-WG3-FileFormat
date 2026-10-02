@@ -452,7 +452,8 @@ def _gen_bodies_exporter(schema: Schema, mapping: dict) -> str:
 # ---------------------------------------------------------------------------
 
 # Schema interaction classes whose fields are collected (merged in this order)
-_INTERACTION_CLASSES = ["base_interaction", "normal", "shear", "shear_linear", "normal_linear", "normal_hertz"]
+_INTERACTION_CLASSES = ["base_interaction", "normal", "shear", "shear_linear", "normal_linear", "normal_hertz",
+                        "linear_frictional_3D"]
 
 # HDF5 types of interaction fields that are not in the schema
 _EXTRA_INTERACTION_TYPES = {
@@ -460,7 +461,7 @@ _EXTRA_INTERACTION_TYPES = {
     "reference_radius_1": "scalar_float", "reference_radius_2": "scalar_float",
     "geom_type": "string", "phys_type": "string",
     "normal_stiffness": "scalar_float", "shear_stiffness": "scalar_float",
-    "friction_coefficient_interaction": "scalar_float",
+    "frictional_dissipation": "scalar_float",
 }
 
 

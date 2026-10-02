@@ -299,7 +299,7 @@ _INTERACTION_FIELDS = [
     # [mandatory] normal.normal: Vector3 [$-$]
     ("normal", "vector3", True, lambda i: i.geom.normal),
     # [mandatory] normal.normal_force: float [$F$]
-    ("normal_force", "scalar_float", True, lambda i: (i.phys.normalForce.norm() * (1.0 if i.phys.normalForce.dot(i.geom.normal) >= 0 else -1.0))),
+    ("normal_force", "scalar_float", True, lambda i: 0.0 - i.phys.normalForce.dot(i.geom.normal)),
     #  shear.shear_force: Vector3 [$F$]
     ("shear_force", "vector3", False, lambda i: i.phys.shearForce),
     # [mandatory] shear_linear.ks: float [$F/L$]
@@ -310,6 +310,8 @@ _INTERACTION_FIELDS = [
     ("hertz_young", "scalar_float", True, lambda i: i.phys.young if hasattr(i.phys,'young') else float('nan')),
     # [mandatory] normal_hertz.hertz_poisson: float [$-$]
     ("hertz_poisson", "scalar_float", True, lambda i: i.phys.poisson if hasattr(i.phys,'poisson') else float('nan')),
+    # [mandatory] linear_frictional_3D.friction_coefficient: float [$-$]
+    ("friction_coefficient", "scalar_float", True, lambda i: i.phys.tangensOfFrictionAngle),
     # not in the schema (mapping _interaction_geometry)
     ("contact_point", "vector3", False, lambda i: i.geom.contactPoint),
     ("overlap", "scalar_float", False, lambda i: i.geom.penetrationDepth),
@@ -320,7 +322,7 @@ _INTERACTION_FIELDS = [
     ("phys_type", "string", False, lambda i: type(i.phys).__name__),
     ("normal_stiffness", "scalar_float", False, lambda i: i.phys.kn if hasattr(i.phys,'kn') else float('nan')),
     ("shear_stiffness", "scalar_float", False, lambda i: i.phys.ks if hasattr(i.phys,'ks') else float('nan')),
-    ("friction_coefficient_interaction", "scalar_float", False, lambda i: i.phys.tangensOfFrictionAngle if hasattr(i.phys,'tangensOfFrictionAngle') else float('nan')),
+    ("frictional_dissipation", "scalar_float", False, lambda i: i.phys.frictDissip),
 ]
 
 def _interaction_type(i):

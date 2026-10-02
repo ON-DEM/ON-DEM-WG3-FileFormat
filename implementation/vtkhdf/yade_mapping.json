@@ -100,7 +100,11 @@
 
   "normal": {
     "normal":       "i.geom.normal",
-    "normal_force": "(i.phys.normalForce.norm() * (1.0 if i.phys.normalForce.dot(i.geom.normal) >= 0 else -1.0))"
+    "normal_force": "0.0 - i.phys.normalForce.dot(i.geom.normal)"
+  },
+
+  "linear_frictional_3D": {
+    "friction_coefficient": "i.phys.tangensOfFrictionAngle"
   },
 
   "shear": {
@@ -137,6 +141,6 @@
     "phys_type":                        "type(i.phys).__name__",
     "normal_stiffness":                 "i.phys.kn if hasattr(i.phys,'kn') else float('nan')",
     "shear_stiffness":                  "i.phys.ks if hasattr(i.phys,'ks') else float('nan')",
-    "friction_coefficient_interaction": "i.phys.tangensOfFrictionAngle if hasattr(i.phys,'tangensOfFrictionAngle') else float('nan')"
+    "frictional_dissipation":           "i.phys.frictDissip"
   }
 }
