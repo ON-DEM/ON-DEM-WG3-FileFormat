@@ -197,7 +197,20 @@ def _gen_scene_exporter(schema: Schema, mapping: dict) -> str:
         lines.append("    " + line)
         lines.append("")
 
+    extra = mapping.get("_extra_scene_fields", {})
+    if extra:
+        lines.append("    # not in the schema yet (provisional, mapping _extra_scene_fields)")
+    for fname, expr in extra.items():
+        h = _EXTRA_SCENE_FIELD_TYPES.get(fname, "scalar_float")
+        lines.append(f'    hdf5_write_field(grp, "{fname}", "{h}", {expr}, scalar_as_dataset=False)')
+    if extra:
+        lines.append("")
+
     return "\n".join(lines) + "\n"
+
+
+# HDF5 types of scene fields that are not in the schema yet (mapping "_extra_scene_fields")
+_EXTRA_SCENE_FIELD_TYPES = {"iteration": "scalar_int"}
 
 
 def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
@@ -546,6 +559,8 @@ def _gen_interactions_exporter(schema: Schema, mapping: dict) -> str:
 
 def _gen_main_function(schema_dir: str, mapping_path: str, mapping: dict) -> str:
     time_expr = mapping.get("scene", {}).get("time", "float('nan')")
+    refuse_code = "".join(f"    if {expr}:\n        raise ValueError({('[export_vtkhdf] ' + msg)!r})\n"
+                          for msg, expr in mapping.get("_refuse_if", {}).items())
     return f'''\
 # ---------------------------------------------------------------------------
 # Main entry point
@@ -569,9 +584,11 @@ def export_vtkhdf(filename, display_group_names=None, display_group=None):
         a dict {{body_id: index}} (bodies not in the dict get 0) or a callable
         body -> index. Default: every body in group 0.
 
-    Raises ValueError (and writes no file) if a name or an index is invalid.
+    Raises ValueError (and writes no file) if a name or an index is invalid, or
+    if the scene cannot be written completely (mapping "_refuse_if", e.g. a
+    periodic cell).
     """
-    global _DISPLAY_GROUP_NAMES, _DISPLAY_GROUP_SOURCE
+{refuse_code}    global _DISPLAY_GROUP_NAMES, _DISPLAY_GROUP_SOURCE
     _DISPLAY_GROUP_NAMES = list(display_group_names) if display_group_names is not None else ["all"]
     _DISPLAY_GROUP_SOURCE = display_group
 

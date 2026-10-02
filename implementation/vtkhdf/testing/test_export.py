@@ -106,6 +106,7 @@ NAMES = ["particles", "geometry", "unused"]
 group_of = lambda b: 0 if isinstance(b.shape, Sphere) else 1
 out = os.path.join(tempfile.gettempdir(), "test_box_spheres.vtkhdf")
 export_vtkhdf(out, NAMES, group_of)
+time_at_export, iter_at_export = O.time, O.iter
 
 # state before restart, per body id
 before = {}
@@ -243,6 +244,24 @@ with h5py.File(out2, "r") as f:
         ids = sorted(int(v) for v in f["VTKHDF"][name]["PointData/body_id"][:])
         expected = sorted(bid for bid, st in before.items() if NAMES[st["group"]] == name)
         check(ids == expected, f"re-export {name}: body ids")
+    # the file series continues through the restart (O.time and O.iter restarted from 0)
+    sc = f["ONDEM/Scene"].attrs
+    check(int(sc["iteration"]) == iter_at_export + 1000, f"iteration {int(sc['iteration'])} != {iter_at_export + 1000}")
+    check(math.isclose(float(sc["time"]), time_at_export + 1000 * 1e-5, rel_tol=1e-12),
+          f"time {float(sc['time'])!r} != {time_at_export + 1000 * 1e-5!r}")
+    check(O.iter == 1000, f"O.iter restarted from 0 ({O.iter})")
+    print(f"  series continues: iteration {int(sc['iteration'])}, time {float(sc['time']):.6g} (O.iter = {O.iter})")
+
+# ---- Periodic scene: the exporter must refuse and write nothing ----
+O.periodic = True
+periodic_out = os.path.join(tempfile.gettempdir(), "test_periodic.vtkhdf")
+try:
+    export_vtkhdf(periodic_out)
+    check(False, "export of a periodic scene must raise")
+except ValueError as e:
+    check("periodic" in str(e) and not os.path.exists(periodic_out), f"periodic refused, no file: {e}")
+    print("  periodic scene refused:", e)
+O.periodic = False
 
 # ---- A material field missing in the file: the importer must fail clearly ----
 import shutil

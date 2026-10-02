@@ -96,16 +96,18 @@ def _v3(arr):
 
 
 def _read_scene(f):
-    """Return (time, dt, gravity_Vector3, display_group_names) from /ONDEM/Scene."""
+    """Return (time, iteration, dt, gravity_Vector3, display_group_names) from /ONDEM/Scene.
+    iteration is a provisional extra; 0 if the file has none."""
     sc = f["ONDEM/Scene"]
     time    = float(sc.attrs["time"])
+    iteration = int(sc.attrs["iteration"]) if "iteration" in sc.attrs else 0
     dt      = float(sc.attrs["timestep"])
     grav    = sc["gravity"][:]           # shape (3,)
     if "display_group_names" in sc:
         names = [str(n) for n in sc["display_group_names"].asstr()[:]]
     else:
         names = ["all"]                  # schema default
-    return time, dt, _v3(grav), names
+    return time, iteration, dt, _v3(grav), names
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +371,13 @@ def import_vtkhdf(filename,
     Parameters
     ----------
     filename             : str   Path to the .vtkhdf file.
-    restore_time         : bool  Print the saved time (O.time is read-only in YADE).
+    restore_time         : bool  Carry the file's time and iteration on (default True).
+                                 O.time and O.iter are read-only in YADE, so the
+                                 offsets file − current are stored in
+                                 O.tags["ondem_time_offset"] and
+                                 O.tags["ondem_iteration_offset"]; the exporter adds
+                                 them, so a file series stays continuous. Engines that
+                                 read O.time or O.iter still see them from zero.
     restore_dt           : bool  Set O.dt from the file (default True).
     restore_gravity      : bool  Set gravity on the NewtonIntegrator (default True).
     restore_interactions : bool  Rebuild every contact of /ONDEM/Interactions with its
@@ -395,12 +403,14 @@ def import_vtkhdf(filename,
         'mat_id_map'          – {stored material id -> O.materials index}
         'display_group_names' – scene.display_group_names from the file
         'display_group'       – {YADE body id -> display group index}
+        'time_offset'         – file time − O.time at import (0.0 if restore_time=False)
+        'iteration_offset'    – file iteration − O.iter at import
     """
     print(f"[import] Reading '{filename}' ...")
     _check_engines(restore_gravity)
 
     with h5py.File(filename, "r") as f:
-        time, dt, gravity, names = _read_scene(f)
+        time, iteration, dt, gravity, names = _read_scene(f)
         materials    = _read_materials(f)
         bodies       = _read_bodies(f, names)
         interactions = ondem_read_interactions(f) if restore_interactions else []
@@ -408,9 +418,14 @@ def import_vtkhdf(filename,
     _check_file(bodies, materials, interactions)
 
     # --- from here on the scene is modified ---
+    time_offset, iteration_offset = 0.0, 0
     if restore_time:
-        # O.time and O.iter are both read-only in YADE (computed properties).
-        print(f"[import] Note: saved time={time:.6g} s — O.time is read-only in YADE, resuming from iter=0.")
+        # O.time and O.iter are read-only in YADE: carry the file's values as offsets
+        time_offset, iteration_offset = time - O.time, iteration - O.iter
+        O.tags["ondem_time_offset"] = repr(time_offset)
+        O.tags["ondem_iteration_offset"] = str(iteration_offset)
+        print(f"[import] time={time:.6g} s, iteration={iteration}: O.time and O.iter are read-only in YADE; "
+              f"offsets {time_offset:.6g} s / {iteration_offset} stored in O.tags (engines still see O.time, O.iter).")
     if restore_dt:
         O.dt = dt
         print(f"[import] O.dt    = {dt}")
@@ -456,6 +471,8 @@ def import_vtkhdf(filename,
         "mat_id_map"          : mat_id_map,
         "display_group_names" : names,
         "display_group"       : display_group,
+        "time_offset"         : time_offset,
+        "iteration_offset"    : iteration_offset,
     }
 
 

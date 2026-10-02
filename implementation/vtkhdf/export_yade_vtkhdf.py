@@ -101,13 +101,16 @@ def _export_scene(f):
     hdf5_write_field(grp, "timestep", "scalar_float", O.dt, scalar_as_dataset=False)
 
     #  time: float [T]
-    hdf5_write_field(grp, "time", "scalar_float", O.time, scalar_as_dataset=False)
+    hdf5_write_field(grp, "time", "scalar_float", O.time + (float(O.tags['ondem_time_offset']) if 'ondem_time_offset' in O.tags.keys() else 0.0), scalar_as_dataset=False)
 
     #  gravity: Vector3 [L/T²]
     hdf5_write_field(grp, "gravity", "vector3", _get_gravity(), scalar_as_dataset=False)
 
     # [optional] display_group_names: List[str] [$-$]
     hdf5_write_field(grp, "display_group_names", "string_list", _display_group_names(), scalar_as_dataset=False)
+
+    # not in the schema yet (provisional, mapping _extra_scene_fields)
+    hdf5_write_field(grp, "iteration", "scalar_int", O.iter + (int(O.tags['ondem_iteration_offset']) if 'ondem_iteration_offset' in O.tags.keys() else 0), scalar_as_dataset=False)
 
 
 def _export_materials(f):
@@ -379,8 +382,12 @@ def export_vtkhdf(filename, display_group_names=None, display_group=None):
         a dict {body_id: index} (bodies not in the dict get 0) or a callable
         body -> index. Default: every body in group 0.
 
-    Raises ValueError (and writes no file) if a name or an index is invalid.
+    Raises ValueError (and writes no file) if a name or an index is invalid, or
+    if the scene cannot be written completely (mapping "_refuse_if", e.g. a
+    periodic cell).
     """
+    if O.periodic:
+        raise ValueError('[export_vtkhdf] periodic scenes (O.periodic) are not supported yet: the periodic cell would not be written')
     global _DISPLAY_GROUP_NAMES, _DISPLAY_GROUP_SOURCE
     _DISPLAY_GROUP_NAMES = list(display_group_names) if display_group_names is not None else ["all"]
     _DISPLAY_GROUP_SOURCE = display_group
@@ -412,7 +419,7 @@ def export_vtkhdf(filename, display_group_names=None, display_group=None):
         raise
 
     print(f"[export_vtkhdf] Exported {n_bodies} bodies in {len(_DISPLAY_GROUP_NAMES)} display group(s), "
-          f"{n_intrs} interactions at t={O.time:.6g} to '{filename}'")
+          f"{n_intrs} interactions at t={O.time + (float(O.tags['ondem_time_offset']) if 'ondem_time_offset' in O.tags.keys() else 0.0):.6g} to '{filename}'")
 
 
 if __name__ == "__main__":

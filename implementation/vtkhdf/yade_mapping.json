@@ -7,11 +7,19 @@
   },
 
   "scene": {
-    "time":      "O.time",
+    "time":      "O.time + (float(O.tags['ondem_time_offset']) if 'ondem_time_offset' in O.tags.keys() else 0.0)",
     "timestep":  "O.dt",
     "gravity":   "_get_gravity()",
     "units":     "['second', 'meter', 'kilogram']",
     "display_group_names": "_display_group_names()"
+  },
+
+  "_extra_scene_fields": {
+    "iteration": "O.iter + (int(O.tags['ondem_iteration_offset']) if 'ondem_iteration_offset' in O.tags.keys() else 0)"
+  },
+
+  "_refuse_if": {
+    "periodic scenes (O.periodic) are not supported yet: the periodic cell would not be written": "O.periodic"
   },
 
   "base_body": {
