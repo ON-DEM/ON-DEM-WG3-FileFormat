@@ -120,10 +120,6 @@ def _sphere_volume(b):
 def _vec3(v):
     return np.array([v[0], v[1], v[2]], dtype=np.float64)
 
-def _quat(q):
-    """YADE (minieigen) indexes quaternions as q[0..3] = (x, y, z, w), the file order."""
-    return np.array([q[0], q[1], q[2], q[3]], dtype=np.float64)
-
 def _diag3(iv):
     """YADE inertia is a Vector3 of principal moments → diagonal 3x3."""
     return [[iv[0], 0.0, 0.0], [0.0, iv[1], 0.0], [0.0, 0.0, iv[2]]]

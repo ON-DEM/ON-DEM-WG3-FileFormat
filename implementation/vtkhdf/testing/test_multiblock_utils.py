@@ -44,7 +44,7 @@ def write_file(path):
                 points=[BODIES[b][1] for b in ids],
                 point_data={
                     "radius": point_array([BODIES[b][2] for b in ids]),
-                    "orientation": point_array([(0, 0, 0, 1)] * len(ids), width=4),
+                    "orientation": point_array([(1, 0, 0, 0)] * len(ids), width=4),   # identity, (w, x, y, z)
                 },
                 point_data_attrs={"orientation": {"order": QUATERNION_ORDER}},
             )
@@ -124,10 +124,11 @@ def check_validation():
 def check_quaternion_helper(path):
     with h5py.File(path, "a") as f:
         g = f.require_group("ONDEM/test")
-        hdf5_write_quaternion_array(g, "q", [(0.1, 0.2, 0.3, 0.9), None])
+        hdf5_write_quaternion_array(g, "q", [(0.9, 0.1, 0.2, 0.3), None])
+        assert QUATERNION_ORDER == "wxyz"
         assert g["q"].attrs["order"] == QUATERNION_ORDER
-        assert np.allclose(g["q"][:], [[0.1, 0.2, 0.3, 0.9], [0, 0, 0, 1]])
-    print("  quaternion helper keeps (x, y, z, w): OK")
+        assert np.allclose(g["q"][:], [[0.9, 0.1, 0.2, 0.3], [1, 0, 0, 0]])   # None -> identity
+    print("  quaternion helper keeps (w, x, y, z), identity (1, 0, 0, 0): OK")
 
 
 def check_vtk(path):

@@ -24,7 +24,7 @@
   "base_state": {
     "position":         "b.state.pos",
     "velocity":         "b.state.vel",
-    "orientation":      "b.state.ori",
+    "orientation":      "[b.state.ori[3], b.state.ori[0], b.state.ori[1], b.state.ori[2]]",
     "angular_velocity": "b.state.angVel",
     "mass":             "b.state.mass",
     "inertia":          "_diag3(b.state.inertia)",

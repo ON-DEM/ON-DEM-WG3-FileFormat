@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 from export_yade_vtkhdf import export_vtkhdf
 from import_yade_vtkhdf import import_vtkhdf
 import math, tempfile
+from yade import Quaternion
 import numpy as np
 import h5py
 
@@ -57,8 +58,9 @@ for z in zs:
 
 print(f"Bodies added: {len(O.bodies)} ({len(O.bodies)-5} spheres, 5 walls)")
 
-# a non-trivial orientation, to check the quaternion order
-O.bodies[5].state.ori = Quaternion((1, 2, 3), 0.7)
+# non-trivial orientations, to check the quaternion convention
+O.bodies[5].state.ori = Quaternion((1, 2, 3), 0.7)          # a sphere: keeps rotating
+O.bodies[0].state.ori = Quaternion((0, 0, 1), math.pi / 2)  # the floor wall is fixed: stays exact
 
 # ---- Engines ----
 def set_engines():
@@ -106,6 +108,12 @@ def check(cond, msg):
         failures.append(msg)
         print("  FAIL:", msg)
 
+def rotate(q, v):
+    """v_global = q v_body q^-1 for q = (w, x, y, z), the file convention."""
+    w, u = q[0], np.asarray(q[1:])
+    v = np.asarray(v, dtype=float)
+    return v + 2 * w * np.cross(u, v) + 2 * np.cross(u, np.cross(u, v))
+
 # ---- Check the file ----
 print("Checking the file ...")
 with h5py.File(out, "r") as f:
@@ -120,6 +128,23 @@ with h5py.File(out, "r") as f:
         expected = sorted(bid for bid, st in before.items() if NAMES[st["group"]] == name)
         check(sorted(ids) == expected, f"{name}: body ids {sorted(ids)} != {expected}")
     check(f["VTKHDF/unused/NumberOfPoints"][0] == 0, "empty group 'unused' has 0 points")
+
+    # quaternions: order (w, x, y, z), identity (1, 0, 0, 0), v_global = q v_body q^-1
+    stored = {}
+    for name in NAMES:
+        q_ds = f["VTKHDF"][name]["PointData/orientation"]
+        check(q_ds.attrs["order"] == "wxyz", f"{name}: orientation order attribute {q_ds.attrs['order']!r}")
+        for bid, q in zip(f["VTKHDF"][name]["PointData/body_id"][:], q_ds[:]):
+            stored[int(bid)] = q
+    c, s45 = math.cos(math.pi / 4), math.sin(math.pi / 4)
+    check(np.allclose(stored[0], [c, 0, 0, s45], atol=1e-12), f"floor wall: stored {stored[0]} != (cos 45°, 0, 0, sin 45°)")
+    check(abs(stored[5][0]) < 0.999, f"body 5 orientation is not trivial: {stored[5]}")
+    for bid, q in stored.items():
+        yq = O.bodies[bid].state.ori
+        check(np.allclose(q, [yq[3], yq[0], yq[1], yq[2]], atol=1e-12), f"body {bid}: stored {q} is not YADE's (w, x, y, z)")
+        for v in ((1, 0, 0), (0, 1, 0), (0, 0, 1)):
+            check(np.allclose(rotate(q, v), np.array(yq * Vector3(*v)), atol=1e-12),
+                  f"body {bid}: q v q^-1 differs from YADE's rotation of {v}")
     for sg in f["ONDEM/Bodies"]:
         check("position" not in f["ONDEM/Bodies"][sg], f"/ONDEM/Bodies/{sg} must not store position")
 

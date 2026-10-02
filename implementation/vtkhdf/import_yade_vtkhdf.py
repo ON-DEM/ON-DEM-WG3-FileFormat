@@ -28,7 +28,7 @@ File layout expected (written by the exporter):
         radius          (N,)     NaN for non-spheres
         velocity        (N,3)
         angular_velocity (N,3)
-        orientation     (N,4)    [x, y, z, w], attribute order = "xyzw"
+        orientation     (N,4)    [w, x, y, z], attribute order = "wxyz"
     Assembly/<group name>        soft link -> /VTKHDF/<group name>
   /ONDEM/
     Scene/                       attrs: time, timestep; datasets: gravity,
@@ -44,10 +44,11 @@ display_group_names.
 
 Quaternion convention
 ---------------------
-The file stores [x, y, z, w] (dataset attribute order = "xyzw").
-YADE (minieigen) indexes a quaternion as q[0..3] = (x, y, z, w), but its
-constructor takes Quaternion(w, x, y, z).
-This importer therefore builds:  stored [x,y,z,w] → Quaternion(w, x, y, z).
+The file stores [w, x, y, z] (dataset attribute order = "wxyz"), identity
+(1, 0, 0, 0), v_global = q v_body q^-1 (provisional, to be confirmed by Bruno).
+YADE (minieigen) indexes a quaternion as q[0..3] = (x, y, z, w); the mapping
+reorders on export. Its constructor takes Quaternion(w, x, y, z), so this
+importer builds:  stored [w,x,y,z] → Quaternion(w, x, y, z).
 
 Usage
 -----
@@ -168,8 +169,8 @@ def _set_state(b, rec):
     if "angular_velocity" in rec:
         b.state.angVel = _v3(rec["angular_velocity"])
     if "orientation" in rec:
-        # stored [x, y, z, w]; YADE constructor Quaternion(w, x, y, z)
-        qx, qy, qz, qw = (float(v) for v in rec["orientation"])
+        # stored [w, x, y, z]; YADE constructor Quaternion(w, x, y, z)
+        qw, qx, qy, qz = (float(v) for v in rec["orientation"])
         b.state.ori = Quaternion(qw, qx, qy, qz)
 
 

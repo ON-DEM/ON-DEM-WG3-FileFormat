@@ -10,10 +10,10 @@ import numpy as np
 import h5py
 
 
-# Component order of quaternions in the file (decisions 2026-10-01, item 9,
-# to be confirmed by Bruno). Written as the "order" attribute of every
-# quaternion dataset.
-QUATERNION_ORDER = "xyzw"
+# Component order of quaternions in the file: (w, x, y, z), scalar first,
+# identity (1, 0, 0, 0), v_global = q v_body q^-1 (provisional, to be confirmed
+# by Bruno). Written as the "order" attribute of every quaternion dataset.
+QUATERNION_ORDER = "wxyz"
 
 def _mat3_flat(m):
     """Flatten a 3x3 matrix to row-major list."""
@@ -69,7 +69,7 @@ def hdf5_write_field(group, field_name: str, hdf5_type: str, value, scalar_as_da
         group.create_dataset(field_name, data=np.array([value[0], value[1], value[2]], dtype=np.float64))
 
     elif hdf5_type == "quaternion":
-        # value is indexable in file order: value[0..3] = (x, y, z, w)
+        # value is indexable in file order: value[0..3] = (w, x, y, z)
         ds = group.create_dataset(field_name, data=np.array([value[0], value[1], value[2], value[3]], dtype=np.float64))
         ds.attrs["order"] = QUATERNION_ORDER
 
@@ -92,9 +92,9 @@ def hdf5_write_vector3_array(group, field_name: str, values_list):
 
 
 def hdf5_write_quaternion_array(group, field_name: str, values_list):
-    """Write an array of quaternions to an HDF5 dataset, in file order (x, y, z, w).
-    Each value must be indexable in that order: q[0..3] = (x, y, z, w). None → identity (0, 0, 0, 1)."""
-    ds = group.create_dataset(field_name, data=np.array([[q[0], q[1], q[2], q[3]] if q is not None else [0, 0, 0, 1] for q in values_list], dtype=np.float64))
+    """Write an array of quaternions to an HDF5 dataset, in file order (w, x, y, z).
+    Each value must be indexable in that order: q[0..3] = (w, x, y, z). None → identity (1, 0, 0, 0)."""
+    ds = group.create_dataset(field_name, data=np.array([[q[0], q[1], q[2], q[3]] if q is not None else [1, 0, 0, 0] for q in values_list], dtype=np.float64))
     ds.attrs["order"] = QUATERNION_ORDER
 
 
@@ -146,7 +146,7 @@ def hdf5_read_field(group, field_name: str, hdf5_type: str, scalar_as_dataset: b
         return [float(data[0]), float(data[1]), float(data[2])]
 
     elif hdf5_type == "quaternion":
-        # Returned in file order (x, y, z, w)
+        # Returned in file order (w, x, y, z)
         data = group[field_name][:]
         return [float(data[0]), float(data[1]), float(data[2]), float(data[3])]
 
@@ -175,7 +175,7 @@ def hdf5_read_vector3_array(group, field_name: str):
 
 
 def hdf5_read_quaternion_array(group, field_name: str):
-    """Read an array of quaternions from an HDF5 dataset. Returns lists in file order (x, y, z, w)."""
+    """Read an array of quaternions from an HDF5 dataset. Returns lists in file order (w, x, y, z)."""
     data = group[field_name][:]
     return [[float(v[0]), float(v[1]), float(v[2]), float(v[3])] for v in data]
 

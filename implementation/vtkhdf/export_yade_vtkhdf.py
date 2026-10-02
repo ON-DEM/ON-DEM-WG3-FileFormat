@@ -52,10 +52,6 @@ def _sphere_volume(b):
 def _vec3(v):
     return np.array([v[0], v[1], v[2]], dtype=np.float64)
 
-def _quat(q):
-    """YADE (minieigen) indexes quaternions as q[0..3] = (x, y, z, w), the file order."""
-    return np.array([q[0], q[1], q[2], q[3]], dtype=np.float64)
-
 def _diag3(iv):
     """YADE inertia is a Vector3 of principal moments → diagonal 3x3."""
     return [[iv[0], 0.0, 0.0], [0.0, iv[1], 0.0], [0.0, 0.0, iv[2]]]
@@ -163,7 +159,7 @@ _BODY_FIELDS = [
     # [mandatory] base_state.velocity: Vector3 [$L T^{-1}$]
     ("velocity", "vector3", True, lambda b: b.state.vel),
     # [mandatory] base_state.orientation: Quaternion [$-$]
-    ("orientation", "quaternion", True, lambda b: b.state.ori),
+    ("orientation", "quaternion", True, lambda b: [b.state.ori[3], b.state.ori[0], b.state.ori[1], b.state.ori[2]]),
     # [mandatory] base_state.angular_velocity: Vector3 [$T^{-1}$]
     ("angular_velocity", "vector3", True, lambda b: b.state.angVel),
     # [mandatory] base_state.mass: float [$M$]
