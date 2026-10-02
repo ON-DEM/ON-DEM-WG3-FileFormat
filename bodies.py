@@ -7,7 +7,7 @@ class base_state:
     velocity: Vector3 = Vector3(0,0,0)
     """**[mandatory]** translational velocity [$L T^{-1}$]"""
     orientation: Quaternion = Quaternion(1,0,0,0)
-    """**[mandatory]** orientation, unit quaternion $q$ with components in the order $(w, x, y, z)$ (scalar first). The identity, no rotation, is $(1, 0, 0, 0)$. It converts body-frame coordinates to global-frame coordinates: $v_\\mathrm{global} = q \\, v_\\mathrm{body} \\, q^{-1}$ (equivalently, it rotates the global axes onto the body axes). Provisional, to be confirmed by Bruno [$-$]"""
+    """**[mandatory]** orientation, unit quaternion $q$ with components in the order $(w, x, y, z)$ (scalar first). The identity, no rotation, is $(1, 0, 0, 0)$. It converts body-frame coordinates to global-frame coordinates: $v_\\mathrm{global} = q \\, v_\\mathrm{body} \\, q^{-1}$ (equivalently, it rotates the global axes onto the body axes) [$-$]"""
     angular_velocity: Vector3 = Vector3(0,0,0)
     """**[mandatory]** angular velocity [$T^{-1}$]"""
     mass: float = None

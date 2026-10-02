@@ -52,7 +52,7 @@ display_group_names.
 Quaternion convention
 ---------------------
 The file stores [w, x, y, z] (dataset attribute order = "wxyz"), identity
-(1, 0, 0, 0), v_global = q v_body q^-1 (provisional, to be confirmed by Bruno).
+(1, 0, 0, 0), v_global = q v_body q^-1.
 YADE (minieigen) indexes a quaternion as q[0..3] = (x, y, z, w); the mapping
 reorders on export. Its constructor takes Quaternion(w, x, y, z), so this
 importer builds:  stored [w,x,y,z] → Quaternion(w, x, y, z).

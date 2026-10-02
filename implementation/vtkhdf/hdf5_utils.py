@@ -11,8 +11,8 @@ import h5py
 
 
 # Component order of quaternions in the file: (w, x, y, z), scalar first,
-# identity (1, 0, 0, 0), v_global = q v_body q^-1 (provisional, to be confirmed
-# by Bruno). Written as the "order" attribute of every quaternion dataset.
+# identity (1, 0, 0, 0), v_global = q v_body q^-1 (decided on 2 October 2026).
+# Written as the "order" attribute of every quaternion dataset.
 QUATERNION_ORDER = "wxyz"
 
 def _mat3_flat(m):

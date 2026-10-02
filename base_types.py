@@ -39,7 +39,7 @@ class Quaternion:
     """A simple quaternion class.
 
     Component order (w, x, y, z), scalar first: index 0 is w. The identity
-    (no rotation) is (1, 0, 0, 0). (Provisional, to be confirmed by Bruno.)
+    (no rotation) is (1, 0, 0, 0). (Decided on 2 October 2026.)
     """
 
     def __init__(self, w: float = 1.0, x: float = 0.0, y: float = 0.0, z: float = 0.0):
