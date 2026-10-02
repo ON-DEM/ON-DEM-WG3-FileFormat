@@ -54,7 +54,8 @@
     "Box":       "box",
     "Polyhedra": "polyhedron",
     "Wall":      "wall",
-    "Facet":     "facet"
+    "Facet":     "facet",
+    "Clump":     "clump"
   },
 
   "_extra_shapes": {

@@ -118,7 +118,7 @@ def _export_materials(f):
     mat_grp = f.require_group("ONDEM/Materials")
     seen_ids = set()
     for b in O.bodies:
-        if b is None: continue
+        if b is None or b.material is None: continue   # clump bodies have no material
         mat = b.material
         if mat.id in seen_ids: continue
         seen_ids.add(mat.id)
@@ -232,7 +232,7 @@ _SHAPE_FIELDS = {
 
 _BLOCK_FIELDS = ['radius', 'velocity', 'angular_velocity', 'orientation']
 _NOT_IN_ONDEM = ['angular_velocity', 'display_group', 'orientation', 'position', 'radius', 'velocity']
-_SHAPE_GROUPS = {'Sphere': 'sphere', 'Box': 'box', 'Polyhedra': 'polyhedron', 'Wall': 'wall', 'Facet': 'facet'}
+_SHAPE_GROUPS = {'Sphere': 'sphere', 'Box': 'box', 'Polyhedra': 'polyhedron', 'Wall': 'wall', 'Facet': 'facet', 'Clump': 'clump'}
 
 def _shape_group(b):
     """/ONDEM/Bodies group of body b; "other" for shapes not handled yet."""

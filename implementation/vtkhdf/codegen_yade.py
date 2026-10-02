@@ -225,7 +225,7 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
         '    mat_grp = f.require_group("ONDEM/Materials")',
         "    seen_ids = set()",
         "    for b in O.bodies:",
-        "        if b is None: continue",
+        "        if b is None or b.material is None: continue   # clump bodies have no material",
         "        mat = b.material",
         "        if mat.id in seen_ids: continue",
         "        seen_ids.add(mat.id)",

@@ -3,8 +3,9 @@ test_restart.py
 Acceptance test: a restart from the file continues the simulation as if it
 had never stopped, contact history included.
 
-  A: settle 36 spheres in a box of 5 walls (+ a fixed box), tilt gravity so
-     the contacts carry shear load, export at step N, run M more steps.
+  A: settle 36 spheres in a box of 5 walls (+ a fixed box, one sphere with
+     blocked translations), tilt gravity so the contacts carry shear load,
+     export at step N, run M more steps.
   B: fresh scene, same engines, import the file, run M steps.
 
 Compared between A and B:
@@ -14,13 +15,24 @@ Compared between A and B:
     it is rebuilt from the stored scalar);
   - after 1 step and after M steps: the set of contacts, body positions,
     velocities, angular velocities, and per-contact normal and shear force
-    vectors, within TOL (relative to a reference scale, see below);
+    vectors, relative to reference scales (sphere radius, largest velocity,
+    angular velocity and normal force in A);
   - time and iteration of a file exported by B at the end (series continues).
 
-Negative controls (must exceed the tolerance, to show the test can fail):
-  B' = import, then set every shear force to zero (history lost);
-  B" = import, then replace the stored normals of sphere-sphere contacts by
-       the current centre line (normal history lost).
+Two scenarios, with stated tolerances:
+  1. without clumps: the restart must be bit-identical; tolerance 1e-10 after
+     1 step and after M steps (observed: 0).
+  2. with 3 two-sphere clumps: YADE recomputes the members' relative poses
+     from their positions when the clump is rebuilt (they cannot be set from
+     Python), so B starts with round-off differences, which the granular
+     dynamics amplify. Tolerance 1e-12 after 1 step (round-off) and 1e-7
+     after M steps (observed on 2026-10-02: 1e-13 and 5e-9).
+
+Negative controls in each scenario (must exceed the tolerance after M steps,
+to show the test can fail):
+  - import, then set every shear force to zero (history lost);
+  - import, then replace the stored normals of sphere-sphere contacts by the
+    current centre line (normal history lost).
 
 Run with (from Windows):
     wsl -d Ubuntu-24.04 yadedaily -n -x <path>/implementation/vtkhdf/testing/test_restart.py
@@ -42,7 +54,6 @@ from export_yade_vtkhdf import export_vtkhdf
 from import_yade_vtkhdf import import_vtkhdf
 
 N_SETTLE, N_TILT, M = 8000, 2000, 2000
-TOL = 1e-10          # relative to the reference scales below
 R = 0.012            # sphere radius: reference length
 
 failures = []
@@ -69,7 +80,7 @@ def set_engines():
     ]
 
 
-def build_scene():
+def build_scene(with_clumps):
     mat = O.materials.append(FrictMat(density=2450, young=3.7e7, poisson=0.27,
                                       frictionAngle=math.radians(23), label="glass"))
     wall_mat = O.materials.append(FrictMat(density=7800, young=2.1e8, poisson=0.41,
@@ -89,17 +100,25 @@ def build_scene():
                               orientation=Quaternion((0, 0, 1), math.radians(10)),
                               fixed=True, material=wall_mat))
     O.bodies[7].state.blockedDOFs = "xyz"     # one sphere that may only rotate
+    clumps = []
+    if with_clumps:
+        # three clumps of two overlapping spheres, dropped into hollows of the top layer
+        for (x, y), (dx, dy) in (((-0.0125, -0.0125), (0.006, 0.0)), ((0.0125, 0.0125), (0.0, 0.006)),
+                                 ((-0.0125, 0.0125), (0.0045, 0.0045))):
+            cid, _ = O.bodies.appendClumped([utils.sphere((x - dx, y - dy, 0.104), 0.008, material=mat),
+                                             utils.sphere((x + dx, y + dy, 0.104), 0.008, material=mat)])
+            clumps.append(cid)
     O.dt = 1e-5
+    return clumps
 
 
 # ---------------------------------------------------------------------------
-# Snapshots
+# Snapshots and comparison
 # ---------------------------------------------------------------------------
 
 def body_states():
     return {b.id: dict(pos=np.array(b.state.pos), vel=np.array(b.state.vel),
-                       angVel=np.array(b.state.angVel),
-                       ori=np.array([b.state.ori[k] for k in range(4)]))
+                       angVel=np.array(b.state.angVel))
             for b in O.bodies}
 
 
@@ -118,11 +137,12 @@ def max_diff(a, b, key):
     return max(np.max(np.abs(np.asarray(a[k][key]) - np.asarray(b[k][key]))) for k in a) if a else 0.0
 
 
-def compare(label, sA, cA, sB, cB, report):
-    """Compare B against A after some steps; returns the largest relative difference."""
-    check(set(cA) == set(cB), f"{label}: contact sets differ "
-          f"(only A: {sorted(set(cA) - set(cB))[:5]}, only B: {sorted(set(cB) - set(cA))[:5]})")
-    common = {k: cA[k] for k in cA if k in cB}
+def compare(label, sA, cA, sB, cB, tol, report):
+    """Compare B against A; returns the largest relative difference."""
+    if report:
+        check(set(cA) == set(cB), f"{label}: contact sets differ "
+              f"(only A: {sorted(set(cA) - set(cB))[:5]}, only B: {sorted(set(cB) - set(cA))[:5]})")
+    common = [k for k in cA if k in cB]
     vmax = max(np.max(np.abs(s["vel"])) for s in sA.values()) or 1.0
     wmax = max(np.max(np.abs(s["angVel"])) for s in sA.values()) or 1.0
     fmax = max(np.linalg.norm(c["fn"]) for c in cA.values()) or 1.0
@@ -130,95 +150,18 @@ def compare(label, sA, cA, sB, cB, report):
         "position":         max_diff(sA, sB, "pos") / R,
         "velocity":         max_diff(sA, sB, "vel") / vmax,
         "angular velocity": max_diff(sA, sB, "angVel") / wmax,
-        "normal force":     max_diff(common, {k: cB[k] for k in common}, "fn") / fmax,
-        "shear force":      max_diff(common, {k: cB[k] for k in common}, "fs") / fmax,
+        "normal force":     max_diff({k: cA[k] for k in common}, cB, "fn") / fmax,
+        "shear force":      max_diff({k: cA[k] for k in common}, cB, "fs") / fmax,
     }
-    worst = max(rel.values())
     if report:
-        print(f"  {label}: " + ", ".join(f"{k} {v:.1e}" for k, v in rel.items()))
+        print(f"    {label}: " + ", ".join(f"{k} {v:.1e}" for k, v in rel.items()) + f"  (tolerance {tol:.0e})")
         for k, v in rel.items():
-            check(v <= TOL, f"{label}: {k} differs by {v:.2e} (relative), tolerance {TOL:.0e}")
-    return worst
+            check(v <= tol, f"{label}: {k} differs by {v:.2e} (relative), tolerance {tol:.0e}")
+    return max(rel.values())
 
 
 # ---------------------------------------------------------------------------
-# Run A: uninterrupted
-# ---------------------------------------------------------------------------
-
-check(O.numThreads == 1, f"the test needs 1 OpenMP thread (yadedaily default), got {O.numThreads}")
-out = os.path.join(tempfile.gettempdir(), "test_restart.vtkhdf")
-
-print("Run A ...")
-O.reset()
-set_engines()
-build_scene()
-O.run(N_SETTLE, wait=True)
-newton.gravity = (2.0, 1.0, -9.81)          # tilt: contacts carry shear load, some slide
-O.run(N_TILT, wait=True)
-export_vtkhdf(out)
-A0_s, A0_c = body_states(), contacts()
-O.run(1, wait=True)
-A1_s, A1_c = body_states(), contacts()
-O.run(M - 1, wait=True)
-AM_s, AM_c = body_states(), contacts()
-A_end_time, A_end_iter = O.time, O.iter
-sliding = sum(1 for c in A0_c.values()
-              if np.linalg.norm(c["fs"]) >= c["tan"] * np.linalg.norm(c["fn"]) * (1 - 1e-9))
-fs_max = max(np.linalg.norm(c["fs"]) for c in A0_c.values())
-print(f"  A at restart: {len(A0_c)} contacts, {sliding} sliding, max |Fs| {fs_max:.3e} N, "
-      f"max |Fn| {max(np.linalg.norm(c['fn']) for c in A0_c.values()):.3e} N")
-check(fs_max > 1e-3, "contacts carry shear load at the restart (otherwise the test proves little)")
-
-
-# ---------------------------------------------------------------------------
-# Run B: restart from the file
-# ---------------------------------------------------------------------------
-
-def run_B(mutate=None):
-    O.reset()
-    set_engines()
-    r = import_vtkhdf(out)
-    check(all(s == n for s, n in r["id_map"].items()), "body ids unchanged after import into an empty scene")
-    if mutate:
-        mutate()
-    c0 = contacts()
-    O.run(1, wait=True)
-    s1, c1 = body_states(), contacts()
-    O.run(M - 1, wait=True)
-    sM, cM = body_states(), contacts()
-    return c0, s1, c1, sM, cM
-
-
-print("Run B (restart) ...")
-B0_c, B1_s, B1_c, BM_s, BM_c = run_B()
-
-# restart instant: contact set and restored values
-check(set(B0_c) == set(A0_c), "restart instant: same contacts as A")
-exact = ("normal", "fs", "kn", "ks", "tan", "dissip")
-bad_exact = [(k, key) for k in A0_c if k in B0_c for key in exact
-             if not np.array_equal(np.asarray(A0_c[k][key]), np.asarray(B0_c[k][key]))]
-check(not bad_exact, f"restart instant: values not exactly restored: {bad_exact[:5]}")
-fmax0 = max(np.linalg.norm(c["fn"]) for c in A0_c.values())
-dfn0 = max_diff({k: A0_c[k] for k in A0_c if k in B0_c}, B0_c, "fn") / fmax0
-check(dfn0 <= 1e-15, f"restart instant: normal force differs by {dfn0:.1e} relative")
-print(f"  restart instant: {len(B0_c)} contacts; normal, shear force, kn, ks, friction, dissipation "
-      f"{'exactly equal' if not bad_exact else 'NOT equal'}; normal force within {dfn0:.1e}")
-
-compare("after 1 step", A1_s, A1_c, B1_s, B1_c, report=True)
-compare(f"after {M} steps", AM_s, AM_c, BM_s, BM_c, report=True)
-
-# the file series continues
-out_end = os.path.join(tempfile.gettempdir(), "test_restart_end.vtkhdf")
-export_vtkhdf(out_end)
-with h5py.File(out_end, "r") as f:
-    sc = f["ONDEM/Scene"].attrs
-    check(int(sc["iteration"]) == A_end_iter, f"iteration {int(sc['iteration'])} != A's {A_end_iter}")
-    check(math.isclose(float(sc["time"]), A_end_time, rel_tol=1e-12), f"time {float(sc['time'])!r} != A's {A_end_time!r}")
-    print(f"  series continues: iteration {int(sc['iteration'])} (A: {A_end_iter}), time {float(sc['time']):.9g} (A: {A_end_time:.9g})")
-
-
-# ---------------------------------------------------------------------------
-# Negative controls: the test must see a lost history
+# One scenario: A uninterrupted, B restarted, negative controls
 # ---------------------------------------------------------------------------
 
 def zero_shear():
@@ -232,15 +175,85 @@ def centre_line_normals():
             d = O.bodies[i.id2].state.pos - O.bodies[i.id1].state.pos
             i.geom.normal = d / d.norm()
 
-for label, mutate in (("control: shear history lost", zero_shear),
-                      ("control: stored normals ignored", centre_line_normals)):
-    print(f"Run {label} ...")
-    _, _, _, sM, cM = run_B(mutate)
-    worst = compare(label, AM_s, AM_c, sM, cM, report=False)
-    print(f"  {label}: largest relative difference after {M} steps {worst:.1e} (must exceed {TOL:.0e})")
-    check(worst > TOL, f"{label}: the test did not detect the lost history ({worst:.1e})")
 
-print(f"Files: {out}, {out_end}")
+def scenario(name, with_clumps, tol_1, tol_M):
+    print(f"Scenario: {name}")
+    out = os.path.join(tempfile.gettempdir(), f"test_restart_{'clumps' if with_clumps else 'plain'}.vtkhdf")
+
+    # --- A: uninterrupted
+    O.reset()
+    set_engines()
+    clumps = build_scene(with_clumps)
+    O.run(N_SETTLE, wait=True)
+    newton.gravity = (2.0, 1.0, -9.81)          # tilt: contacts carry shear load, some slide
+    O.run(N_TILT, wait=True)
+    export_vtkhdf(out)
+    A0_c = contacts()
+    O.run(1, wait=True)
+    A1_s, A1_c = body_states(), contacts()
+    O.run(M - 1, wait=True)
+    AM_s, AM_c = body_states(), contacts()
+    A_end_time, A_end_iter = O.time, O.iter
+    sliding = sum(1 for c in A0_c.values()
+                  if np.linalg.norm(c["fs"]) >= c["tan"] * np.linalg.norm(c["fn"]) * (1 - 1e-9))
+    fs_max = max(np.linalg.norm(c["fs"]) for c in A0_c.values())
+    print(f"  A at restart: {len(A0_c)} contacts, {sliding} sliding, max |Fs| {fs_max:.3e} N")
+    check(fs_max > 1e-3, f"{name}: contacts carry shear load at the restart (otherwise the test proves little)")
+    if with_clumps:
+        members = {m for c in clumps for m in O.bodies[c].shape.members.keys()}
+        n = sum(1 for k in A0_c if k[0] in members or k[1] in members)
+        print(f"  clumps: {len(clumps)}, contacts of clump members at restart: {n}")
+        check(n >= len(clumps), f"{name}: clumps are in contact at the restart")
+
+    # --- B: restart from the file
+    def run_B(mutate=None):
+        O.reset()
+        set_engines()
+        r = import_vtkhdf(out)
+        check(all(s == n for s, n in r["id_map"].items()), f"{name}: body ids unchanged after import")
+        check(r["clump_ids"] == clumps, f"{name}: clumps rebuilt with their ids {r['clump_ids']} != {clumps}")
+        if mutate:
+            mutate()
+        c0 = contacts()
+        O.run(1, wait=True)
+        s1, c1 = body_states(), contacts()
+        O.run(M - 1, wait=True)
+        return c0, s1, c1, body_states(), contacts()
+
+    B0_c, B1_s, B1_c, BM_s, BM_c = run_B()
+    check(set(B0_c) == set(A0_c), f"{name}: restart instant: same contacts as A")
+    bad_exact = [(k, key) for k in A0_c if k in B0_c for key in ("normal", "fs", "kn", "ks", "tan", "dissip")
+                 if not np.array_equal(np.asarray(A0_c[k][key]), np.asarray(B0_c[k][key]))]
+    check(not bad_exact, f"{name}: restart instant: values not exactly restored: {bad_exact[:5]}")
+    fmax0 = max(np.linalg.norm(c["fn"]) for c in A0_c.values())
+    dfn0 = max_diff({k: A0_c[k] for k in A0_c if k in B0_c}, B0_c, "fn") / fmax0
+    check(dfn0 <= 1e-15, f"{name}: restart instant: normal force differs by {dfn0:.1e} relative")
+    print(f"  B restart instant: {len(B0_c)} contacts; normal, shear force, kn, ks, friction, dissipation "
+          f"{'exactly equal' if not bad_exact else 'NOT equal'}; normal force within {dfn0:.1e}")
+    compare("after 1 step", A1_s, A1_c, B1_s, B1_c, tol_1, report=True)
+    compare(f"after {M} steps", AM_s, AM_c, BM_s, BM_c, tol_M, report=True)
+
+    out_end = os.path.join(tempfile.gettempdir(), "test_restart_end.vtkhdf")
+    export_vtkhdf(out_end)
+    with h5py.File(out_end, "r") as f:
+        sc = f["ONDEM/Scene"].attrs
+        check(int(sc["iteration"]) == A_end_iter, f"{name}: iteration {int(sc['iteration'])} != A's {A_end_iter}")
+        check(math.isclose(float(sc["time"]), A_end_time, rel_tol=1e-12), f"{name}: time {float(sc['time'])!r} != A's {A_end_time!r}")
+        print(f"  series continues: iteration {int(sc['iteration'])} (A: {A_end_iter}), time {float(sc['time']):.9g} (A: {A_end_time:.9g})")
+
+    # --- negative controls
+    for label, mutate in (("control: shear history lost", zero_shear),
+                          ("control: stored normals ignored", centre_line_normals)):
+        _, _, _, sM, cM = run_B(mutate)
+        worst = compare(label, AM_s, AM_c, sM, cM, tol_M, report=False)
+        print(f"  {label}: largest relative difference after {M} steps {worst:.1e} (must exceed {tol_M:.0e})")
+        check(worst > tol_M, f"{name}: {label}: the test did not detect the lost history ({worst:.1e})")
+
+
+check(O.numThreads == 1, f"the test needs 1 OpenMP thread (yadedaily default), got {O.numThreads}")
+scenario("without clumps (bit-identical)", with_clumps=False, tol_1=1e-10, tol_M=1e-10)
+scenario("with clumps (members' relative poses recomputed by YADE)", with_clumps=True, tol_1=1e-12, tol_M=1e-7)
+
 if failures:
     print(f"TEST FAILED ({len(failures)} check(s))")
     sys.exit(1)

@@ -15,12 +15,14 @@ Restored:
   - Spheres         (blocks + /ONDEM/Bodies/sphere/)
   - Walls           (blocks + /ONDEM/Bodies/wall/)
   - Boxes           (blocks + /ONDEM/Bodies/box/)
+  - Clumps          (members restored first, then O.bodies.clump; the frame YADE
+                     recomputes is checked against the file, see _make_clump)
   - Contacts        (/ONDEM/Interactions/: every real contact is rebuilt with
                      utils.createInteraction and gets its stored history:
                      normal, shear force, stiffnesses, friction)
   - Display groups  (returned, so they can be passed back to export_vtkhdf)
 Refused (ValueError, nothing is created):
-  - Shapes other than spheres, walls and boxes; clumps.
+  - Shapes other than spheres, walls, boxes and clumps.
   - Contact types other than (ScGeom, FrictPhys).
 
 File layout expected (written by the exporter):
@@ -199,16 +201,27 @@ def _check_file(bodies, materials, interactions):
 
     unsupported = {}
     for bid, rec in bodies.items():
-        if rec["shape_group"] not in _MAKERS:
+        if rec["shape_group"] not in _MAKERS and rec["shape_group"] != "clump":
             unsupported.setdefault(rec["shape_group"], []).append(bid)
     for sg, ids in sorted(unsupported.items()):
         errors.append(f"shape group '{sg}' is not supported by this importer: body_id {_short(ids)}")
 
-    clumped = [bid for bid, rec in bodies.items() if int(rec.get("clump_id", -1)) >= 0]
-    if clumped:
-        errors.append(f"clumps are not rebuilt by this importer: body_id {_short(clumped)}")
+    clumps = {bid for bid, rec in bodies.items() if rec["shape_group"] == "clump"}
+    orphans = [bid for bid, rec in bodies.items()
+               if int(rec.get("clump_id", -1)) >= 0 and int(rec["clump_id"]) not in clumps and bid not in clumps]
+    if orphans:
+        errors.append(f"clump members whose clump body is not in the file: body_id {_short(orphans)}")
+    members = {c: _clump_members(bodies, c) for c in clumps}
+    empty = [c for c, m in members.items() if not m]
+    if empty:
+        errors.append(f"clump bodies without members: body_id {_short(empty)}")
+    nested = [m for ms in members.values() for m in ms if bodies[m]["shape_group"] == "clump"]
+    if nested:
+        errors.append(f"clumps inside clumps are not supported: body_id {_short(nested)}")
 
-    no_mat = [bid for bid, rec in bodies.items() if int(rec.get("material_id", -1)) not in materials]
+    # clump bodies have no material in YADE
+    no_mat = [bid for bid, rec in bodies.items()
+              if rec["shape_group"] != "clump" and int(rec.get("material_id", -1)) not in materials]
     if no_mat:
         errors.append(f"material_id not found in /ONDEM/Materials: body_id {_short(no_mat)}")
 
@@ -308,6 +321,60 @@ def _make_box(rec, yade_mat):
 _MAKERS = {"sphere": _make_sphere, "wall": _make_wall, "box": _make_box}
 
 
+def _clump_members(bodies, clump_bid):
+    """Stored body ids of the members of a clump (their clump_id is the clump's body_id;
+    in YADE the clump body's own clump_id is its own id, so it is excluded)."""
+    return sorted(bid for bid, rec in bodies.items()
+                  if int(rec.get("clump_id", -1)) == clump_bid and bid != clump_bid)
+
+
+def _rotation_matrix(q):
+    """3x3 rotation matrix of a unit quaternion given as (w, x, y, z)."""
+    w, x, y, z = (float(v) for v in q)
+    return np.array([[1 - 2*(y*y + z*z), 2*(x*y - z*w),     2*(x*z + y*w)],
+                     [2*(x*y + z*w),     1 - 2*(x*x + z*z), 2*(y*z - x*w)],
+                     [2*(x*z - y*w),     2*(y*z + x*w),     1 - 2*(x*x + y*y)]])
+
+
+def _make_clump(bid, rec, member_ids):
+    """Rebuild a clump from its (already restored) members.
+
+    YADE computes the clump frame (centre of mass, principal axes) and the
+    members' relative poses from the members' current positions; the members'
+    relative poses cannot be set from Python. The frame YADE computes is kept,
+    so members and clump stay consistent, and the file is checked against it:
+    the centre of mass must agree, and the stored inertia, rotated into the new
+    frame, must be diagonal there (principal axes may come out permuted or with
+    another sign). Otherwise the clump cannot be reproduced: ValueError.
+    Mass and inertia are then taken from the file, velocities and angular
+    momentum (global quantities) too.
+    """
+    cid = O.bodies.clump(member_ids)
+    c = O.bodies[cid]
+    pos = np.array(c.state.pos)
+    size = max(np.linalg.norm(np.array(O.bodies[m].state.pos) - pos) for m in member_ids) or 1.0
+    if np.linalg.norm(pos - np.asarray(rec["position"], dtype=float)) > 1e-9 * size:
+        raise ValueError(f"[import] clump {bid}: centre of mass recomputed from the members "
+                         f"{pos} differs from the stored position {rec['position']}; the clump cannot be "
+                         f"rebuilt without the members' relative poses (scene partially built; call O.reset())")
+    q_new = c.state.ori
+    R_new = _rotation_matrix((q_new[3], q_new[0], q_new[1], q_new[2]))   # YADE indexes (x, y, z, w)
+    R_file = _rotation_matrix(rec["orientation"])
+    I = np.asarray(rec["inertia"], dtype=float).reshape(3, 3)
+    R = R_new.T @ R_file                       # file frame -> new frame
+    I_new = R @ I @ R.T
+    off = np.max(np.abs(I_new - np.diag(np.diag(I_new))))
+    if off > 1e-9 * np.max(np.abs(np.diag(I_new))):
+        raise ValueError(f"[import] clump {bid}: the principal axes recomputed from the members do "
+                         f"not match the stored orientation and inertia (off-diagonal {off:.2e}); "
+                         f"(scene partially built; call O.reset())")
+    c.state.mass = float(rec["mass"])
+    c.state.inertia = Vector3(*(float(v) for v in np.diag(I_new)))
+    c.state.vel = _v3(rec["velocity"])
+    c.state.angVel = _v3(rec["angular_velocity"])
+    return cid
+
+
 def _restore_frict(i, rec):
     """Contact history of a ScGeom + FrictPhys contact (e.g. Law2_ScGeom_FrictPhys_CundallStrack).
 
@@ -398,6 +465,7 @@ def import_vtkhdf(filename,
         'sphere_ids'          – YADE body ids of the restored spheres
         'wall_ids'            – YADE body ids of the restored walls
         'box_ids'             – YADE body ids of the restored boxes
+        'clump_ids'           – YADE body ids of the rebuilt clump bodies
         'interaction_count'   – number of contacts rebuilt with their history
         'id_map'              – {stored body_id -> YADE body id}
         'mat_id_map'          – {stored material id -> O.materials index}
@@ -440,17 +508,37 @@ def import_vtkhdf(filename,
         mat_id_map[mid] = O.materials.append(FrictMat(**kw))
         print(f"[import] Material id={mid} → O.materials[{mat_id_map[mid]}]  label='{kw['label']}'")
 
-    sphere_ids, wall_ids, box_ids = [], [], []
+    sphere_ids, wall_ids, box_ids, clump_ids = [], [], [], []
     id_map, display_group = {}, {}
+
+    def add_clump(bid):
+        rec = bodies[bid]
+        new_id = _make_clump(bid, rec, [id_map[m] for m in _clump_members(bodies, bid)])
+        _set_extras(O.bodies[new_id], rec)
+        id_map[bid] = new_id
+        display_group[new_id] = rec["display_group"]
+        clump_ids.append(new_id)
+
+    # increasing body_id; a clump is built when its members exist (normally they
+    # have smaller ids, so ids are kept), otherwise at the end
+    deferred = []
     for bid in sorted(bodies):
         rec = bodies[bid]
         sg = rec["shape_group"]
+        if sg == "clump":
+            if all(m in id_map for m in _clump_members(bodies, bid)):
+                add_clump(bid)
+            else:
+                deferred.append(bid)
+            continue
         b = _MAKERS[sg](rec, mat_id_map[int(rec["material_id"])])
         _set_extras(b, rec)
         new_id = O.bodies.append(b)
         id_map[bid] = new_id
         display_group[new_id] = rec["display_group"]
         {"sphere": sphere_ids, "wall": wall_ids, "box": box_ids}[sg].append(new_id)
+    for bid in deferred:
+        add_clump(bid)
 
     _restore_interactions(interactions, id_map)
 
@@ -458,7 +546,8 @@ def import_vtkhdf(filename,
     if moved:
         print(f"[import] Note: {len(moved)} body id(s) changed (scene not empty or ids not contiguous); see 'id_map'.")
 
-    print(f"[import] Done. {len(sphere_ids)} sphere(s), {len(wall_ids)} wall(s), {len(box_ids)} box(es) "
+    print(f"[import] Done. {len(sphere_ids)} sphere(s), {len(wall_ids)} wall(s), {len(box_ids)} box(es), "
+          f"{len(clump_ids)} clump(s) "
           f"in {len(names)} display group(s) {names}, {len(interactions)} contact(s) with history "
           f"→ {len(O.bodies)} total bodies in scene.")
 
@@ -466,6 +555,7 @@ def import_vtkhdf(filename,
         "sphere_ids"          : sphere_ids,
         "wall_ids"            : wall_ids,
         "box_ids"             : box_ids,
+        "clump_ids"           : clump_ids,
         "interaction_count"   : len(interactions),
         "id_map"              : id_map,
         "mat_id_map"          : mat_id_map,
