@@ -36,38 +36,42 @@ class Vector3:
             raise IndexError("Index out of range for Vector3")
 
 class Quaternion:
-    """A simple quaternion class."""
-    
-    def __init__(self, x: float = 1.0, y: float = 0.0, z: float = 0.0, w: float = 0.0):
+    """A simple quaternion class.
+
+    Component order (w, x, y, z), scalar first: index 0 is w. The identity
+    (no rotation) is (1, 0, 0, 0). (Provisional, to be confirmed by Bruno.)
+    """
+
+    def __init__(self, w: float = 1.0, x: float = 0.0, y: float = 0.0, z: float = 0.0):
+        self.w = w
         self.x = x
         self.y = y
         self.z = z
-        self.w = w
 
     def __repr__(self):
-        return f"Quaternion({self.x}, {self.y}, {self.z}, {self.w})"
-    
+        return f"Quaternion({self.w}, {self.x}, {self.y}, {self.z})"
+
     def __getitem__(self, index: int) -> float:
         if index == 0:
-            return self.x
-        elif index == 1:
-            return self.y
-        elif index == 2:
-            return self.z
-        elif index == 3:
             return self.w
+        elif index == 1:
+            return self.x
+        elif index == 2:
+            return self.y
+        elif index == 3:
+            return self.z
         else:
             raise IndexError("Index out of range for Quaternion")
 
     def __setitem__(self, index: int, value: float) -> None:
         if index == 0:
-            self.x = value
-        elif index == 1:
-            self.y = value
-        elif index == 2:
-            self.z = value
-        elif index == 3:
             self.w = value
+        elif index == 1:
+            self.x = value
+        elif index == 2:
+            self.y = value
+        elif index == 3:
+            self.z = value
         else:
             raise IndexError("Index out of range for Quaternion")
         

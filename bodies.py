@@ -6,8 +6,8 @@ class base_state:
     """**[mandatory]** position [$L$]"""
     velocity: Vector3 = Vector3(0,0,0)
     """**[mandatory]** translational velocity [$L T^{-1}$]"""
-    orientation: Quaternion = Quaternion(0,0,0,1)
-    """**[mandatory]** orientation [$-$]"""
+    orientation: Quaternion = Quaternion(1,0,0,0)
+    """**[mandatory]** orientation, unit quaternion $q$ with components in the order $(w, x, y, z)$ (scalar first). The identity, no rotation, is $(1, 0, 0, 0)$. It rotates body axes onto global axes: $v_\\mathrm{global} = q \\, v_\\mathrm{body} \\, q^{-1}$. Provisional, to be confirmed by Bruno [$-$]"""
     angular_velocity: Vector3 = Vector3(0,0,0)
     """**[mandatory]** angular velocity [$T^{-1}$]"""
     mass: float = None
