@@ -41,7 +41,7 @@ several threads the order of force summation, and so the round-off, varies
 from run to run). Ends with "TEST PASSED" or "TEST FAILED" (exit code 1).
 """
 
-import sys, os, math, tempfile
+import sys, os, math, shutil, tempfile
 # exporter and importer live in implementation/vtkhdf, one level up.
 # Under "yadedaily -x" __file__ is the yadedaily binary; the script path is sys.argv[0].
 HERE = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -227,6 +227,7 @@ def scenario(name, with_clumps, with_drop, tol_1, tol_M):
         r = import_vtkhdf(out)
         check(all(s == n for s, n in r["id_map"].items()), f"{name}: body ids unchanged after import")
         check(r["clump_ids"] == clumps, f"{name}: clumps rebuilt with their ids {r['clump_ids']} != {clumps}")
+        check(r["clump_warnings"] == [], f"{name}: stored and recomputed clump relative poses agree: {r['clump_warnings']}")
         if mutate:
             mutate()
         c0 = contacts()
@@ -255,6 +256,35 @@ def scenario(name, with_clumps, with_drop, tol_1, tol_M):
         check(int(sc["iteration"]) == A_end_iter, f"{name}: iteration {int(sc['iteration'])} != A's {A_end_iter}")
         check(math.isclose(float(sc["time"]), A_end_time, rel_tol=1e-12), f"{name}: time {float(sc['time'])!r} != A's {A_end_time!r}")
         print(f"  series continues: iteration {int(sc['iteration'])} (A: {A_end_iter}), time {float(sc['time']):.9g} (A: {A_end_time:.9g})")
+
+    if with_clumps:
+        # the file: clump bodies have clump_id -1, members point to their clump and
+        # carry their relative pose; a corrupted relative pose must produce a warning
+        with h5py.File(out, "r") as f:
+            pd = {k: f["VTKHDF/all/PointData"][k][:] for k in ("body_id", "clump_id", "clump_relative_position",
+                                                                "clump_relative_orientation")}
+        row = {int(b): k for k, b in enumerate(pd["body_id"])}
+        for c in clumps:
+            check(int(pd["clump_id"][row[c]]) == -1, f"{name}: clump body {c} has clump_id -1")
+            check(np.isnan(pd["clump_relative_position"][row[c]]).all(), f"{name}: clump body {c}: no relative pose")
+        member_rows = [k for k, cid in enumerate(pd["clump_id"]) if int(cid) in clumps]
+        check(len(member_rows) == 2 * len(clumps) and all(np.isfinite(pd["clump_relative_position"][k]).all()
+              and np.isfinite(pd["clump_relative_orientation"][k]).all() for k in member_rows),
+              f"{name}: every member has a relative pose")
+        corrupted = os.path.join(tempfile.gettempdir(), "test_restart_clump_corrupted.vtkhdf")
+        shutil.copy(out, corrupted)
+        k = member_rows[0]
+        with h5py.File(corrupted, "a") as f:
+            rp = f["VTKHDF/all/PointData/clump_relative_position"]
+            v = rp[k]
+            rp[k] = v * (1 + 1e-2)                     # 1 % off: well beyond round-off
+        O.reset()
+        set_engines()
+        r = import_vtkhdf(corrupted)
+        bad_member = int(pd["body_id"][k])
+        check(len(r["clump_warnings"]) == 1 and f"member {bad_member}" in r["clump_warnings"][0],
+              f"{name}: a corrupted relative pose is reported: {r['clump_warnings']}")
+        print(f"  corrupted relative pose reported: {r['clump_warnings']}")
 
     # --- negative controls
     for label, mutate in (("control: shear history lost", zero_shear),

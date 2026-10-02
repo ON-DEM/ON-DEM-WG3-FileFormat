@@ -372,7 +372,68 @@ def _rotation_matrix(q):
                      [2*(x*z - y*w),     2*(y*z + x*w),     1 - 2*(x*x + y*y)]])
 
 
-def _make_clump(bid, rec, member_ids):
+def _quat_mul(a, b):
+    """Hamilton product of quaternions given as (w, x, y, z)."""
+    aw, ax, ay, az = a
+    bw, bx, by, bz = b
+    return np.array([aw*bw - ax*bx - ay*by - az*bz,
+                     aw*bx + ax*bw + ay*bz - az*by,
+                     aw*by - ax*bz + ay*bw + az*bx,
+                     aw*bz + ax*by - ay*bx + az*bw])
+
+
+def _quat_conj(q):
+    return np.array([q[0], -q[1], -q[2], -q[3]])
+
+
+def _rotation_angle(a, b):
+    """Angle (rad) of the rotation between two quaternions (w, x, y, z).
+
+    Both are normalized first (YADE lets orientations drift from unit length by
+    about 1e-13), and the angle is 2 atan2(|v|, |w|) of conj(a) b: well
+    conditioned near zero, unlike 2 acos(a . b).
+    """
+    a = np.asarray(a, dtype=float) / np.linalg.norm(a)
+    b = np.asarray(b, dtype=float) / np.linalg.norm(b)
+    d = _quat_mul(_quat_conj(a), b)
+    return 2.0 * float(np.arctan2(np.linalg.norm(d[1:]), abs(d[0])))
+
+
+# Beyond these, a stored relative pose and the one YADE recomputes are not
+# just round-off apart (relative to the clump size, and in radians)
+_CLUMP_POSE_TOL = 1e-10
+
+
+def _check_clump_relative_poses(bid, c, q_file, members, size):
+    """Compare each member's stored relative pose with the one YADE recomputed.
+
+    q_file: the clump's stored orientation (w, x, y, z). members: list of
+    (stored body_id, YADE body id, record). The stored pose is relative to the
+    stored clump frame; it is mapped into the frame YADE recomputed before
+    comparing. Returns a list of warning strings.
+    """
+    q_new = np.array([c.state.ori[3], c.state.ori[0], c.state.ori[1], c.state.ori[2]])  # YADE: (x, y, z, w)
+    table = c.shape.members
+    warnings = []
+    for sbid, new_id, mrec in members:
+        if not ("clump_relative_position" in mrec and "clump_relative_orientation" in mrec
+                and _given(mrec["clump_relative_position"]) and _given(mrec["clump_relative_orientation"])):
+            continue
+        R = _rotation_matrix(q_new).T @ _rotation_matrix(q_file)        # stored clump frame -> new frame
+        expected_pos = R @ np.asarray(mrec["clump_relative_position"], dtype=float)
+        expected_ori = _quat_mul(_quat_mul(_quat_conj(q_new), q_file),
+                                 np.asarray(mrec["clump_relative_orientation"], dtype=float))
+        got_pos, got_q = table[new_id]
+        got_ori = np.array([got_q[3], got_q[0], got_q[1], got_q[2]])
+        dpos = np.linalg.norm(np.array(got_pos) - expected_pos) / size
+        dang = _rotation_angle(got_ori, expected_ori)
+        if dpos > _CLUMP_POSE_TOL or dang > _CLUMP_POSE_TOL:
+            warnings.append(f"clump {bid}, member {sbid}: stored relative pose differs from the one YADE "
+                            f"recomputed (position {dpos:.1e} of the clump size, orientation {dang:.1e} rad)")
+    return warnings
+
+
+def _make_clump(bid, rec, members):
     """Rebuild a clump from its (already restored) members.
 
     YADE computes the clump frame (centre of mass, principal axes) and the
@@ -384,7 +445,13 @@ def _make_clump(bid, rec, member_ids):
     another sign). Otherwise the clump cannot be reproduced: ValueError.
     Mass and inertia are then taken from the file, velocities and angular
     momentum (global quantities) too.
+
+    members: list of (stored body_id, YADE body id, record). The members' stored
+    relative poses are compared with the ones YADE recomputed; differences
+    beyond round-off are returned as warnings (the clump is still built).
+    Returns (YADE clump id, warnings).
     """
+    member_ids = [new_id for _s, new_id, _r in members]
     cid = O.bodies.clump(member_ids)
     c = O.bodies[cid]
     pos = np.array(c.state.pos)
@@ -408,7 +475,8 @@ def _make_clump(bid, rec, member_ids):
     c.state.inertia = Vector3(*(float(v) for v in np.diag(I_new)))
     c.state.vel = _v3(rec["velocity"])
     c.state.angVel = _v3(rec["angular_velocity"])
-    return cid
+    q_file = np.asarray(rec["orientation"], dtype=float)
+    return cid, _check_clump_relative_poses(bid, c, q_file, members, size)
 
 
 def _restore_frict(i, rec):
@@ -502,6 +570,8 @@ def import_vtkhdf(filename,
         'wall_ids'            – YADE body ids of the restored walls
         'box_ids'             – YADE body ids of the restored boxes
         'clump_ids'           – YADE body ids of the rebuilt clump bodies
+        'clump_warnings'      – stored relative poses of clump members that differ from
+                                the ones YADE recomputed beyond round-off (empty if none)
         'interaction_count'   – number of contacts rebuilt with their history
         'id_map'              – {stored body_id -> YADE body id}
         'mat_id_map'          – {stored material id -> O.materials index}
@@ -544,12 +614,16 @@ def import_vtkhdf(filename,
         mat_id_map[mid] = O.materials.append(FrictMat(**kw))
         print(f"[import] Material id={mid} → O.materials[{mat_id_map[mid]}]  label='{kw['label']}'")
 
-    sphere_ids, wall_ids, box_ids, clump_ids = [], [], [], []
+    sphere_ids, wall_ids, box_ids, clump_ids, clump_warnings = [], [], [], [], []
     id_map, display_group = {}, {}
 
     def add_clump(bid):
         rec = bodies[bid]
-        new_id = _make_clump(bid, rec, [id_map[m] for m in _clump_members(bodies, bid)])
+        members = [(m, id_map[m], bodies[m]) for m in _clump_members(bodies, bid)]
+        new_id, warnings = _make_clump(bid, rec, members)
+        for w in warnings:
+            print(f"[import] Warning: {w}")
+        clump_warnings.extend(warnings)
         _set_extras(O.bodies[new_id], rec)
         id_map[bid] = new_id
         display_group[new_id] = rec["display_group"]
@@ -592,6 +666,7 @@ def import_vtkhdf(filename,
         "wall_ids"            : wall_ids,
         "box_ids"             : box_ids,
         "clump_ids"           : clump_ids,
+        "clump_warnings"      : clump_warnings,
         "interaction_count"   : len(interactions),
         "id_map"              : id_map,
         "mat_id_map"          : mat_id_map,
