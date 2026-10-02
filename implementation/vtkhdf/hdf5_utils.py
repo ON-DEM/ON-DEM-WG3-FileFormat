@@ -200,3 +200,179 @@ def hdf5_write_string_array(group, field_name: str, values_list):
     _dt = h5py.special_dtype(vlen=str)
     _ds = group.create_dataset(field_name, (len(values_list),), dtype=_dt)
     for _ii, _v in enumerate(values_list): _ds[_ii] = str(_v) if _v else ""
+
+
+# ---------------------------------------------------------------------------
+# VTKHDF MultiBlockDataSet: one PolyData block per display group
+# ---------------------------------------------------------------------------
+#
+# Layout (decisions 2026-10-01):
+#   /VTKHDF                    Type = "MultiBlockDataSet", Version
+#     <name>/                  one PolyData block per display group
+#       Points      (N,3) float64   body positions (stored only here)
+#       Vertices/               one vertex cell per point
+#       Lines/ Polygons/ Strips/  empty
+#       PointData/body_id (N,) int64, plus the other block fields
+#     Assembly/<name>          soft link -> /VTKHDF/<name>
+#
+# ParaView only reads blocks linked from the Assembly; the Assembly link
+# name is the block name shown in ParaView.
+
+VTKHDF_VERSION = (2, 5)
+_RESERVED_BLOCK_NAMES = {"Assembly"}
+
+
+def _write_ascii_attr(obj, name: str, text: str):
+    """Write a fixed-length ASCII string attribute (the form VTK expects for Type)."""
+    data = text.encode("ascii")
+    obj.attrs.create(name, data, dtype=h5py.string_dtype("ascii", len(data)))
+
+
+def _write_cells(block, section: str, connectivity, offsets):
+    """Write one PolyData cell section (Vertices, Lines, Polygons, Strips)."""
+    g = block.create_group(section)
+    connectivity = np.asarray(connectivity, dtype=np.int64)
+    offsets = np.asarray(offsets, dtype=np.int64)
+    g.create_dataset("NumberOfCells",           data=np.array([len(offsets) - 1], dtype=np.int64))
+    g.create_dataset("NumberOfConnectivityIds", data=np.array([len(connectivity)], dtype=np.int64))
+    g.create_dataset("Offsets",                 data=offsets)
+    g.create_dataset("Connectivity",            data=connectivity)
+
+
+def point_array(values, width: int = None):
+    """Turn a list of per-body values into a float64 array, None → NaN.
+
+    width=None gives shape (N,); width=k gives shape (N,k) and each value
+    must be indexable with k components.
+    """
+    if width is None:
+        return np.array([np.nan if v is None else float(v) for v in values], dtype=np.float64)
+    out = np.full((len(values), width), np.nan, dtype=np.float64)
+    for i, v in enumerate(values):
+        if v is not None:
+            out[i] = [float(v[k]) for k in range(width)]
+    return out
+
+
+def validate_display_groups(names, groups: dict):
+    """Check display group names and the group index of every body.
+
+    names  : list of str, scene.display_group_names
+    groups : dict {body_id: display_group}
+    Raises ValueError with the offending names or body ids.
+    """
+    if not names:
+        raise ValueError("display_group_names must contain at least one name")
+    for n in names:
+        if not isinstance(n, str) or not n or "/" in n or n in (".", "..") or n in _RESERVED_BLOCK_NAMES:
+            raise ValueError(f"invalid display group name {n!r}: names must be non-empty, "
+                             f"without '/', and not one of {sorted(_RESERVED_BLOCK_NAMES)}")
+    if len(set(names)) != len(names):
+        dupes = sorted({n for n in names if names.count(n) > 1})
+        raise ValueError(f"display group names must be unique, duplicated: {dupes}")
+    bad = sorted(bid for bid, g in groups.items()
+                 if isinstance(g, bool) or not isinstance(g, (int, np.integer)) or not 0 <= g < len(names))
+    if bad:
+        shown = ", ".join(f"{bid}->{groups[bid]!r}" for bid in bad[:20])
+        more = f" (and {len(bad) - 20} more)" if len(bad) > 20 else ""
+        raise ValueError(f"display_group must be an integer in [0, {len(names) - 1}] "
+                         f"(display_group_names = {list(names)}); invalid for body_id {shown}{more}")
+
+
+def vtkhdf_init_multiblock(f):
+    """Create /VTKHDF as a MultiBlockDataSet with an empty, creation-ordered Assembly."""
+    vtk = f.require_group("VTKHDF")
+    _write_ascii_attr(vtk, "Type", "MultiBlockDataSet")
+    vtk.attrs.create("Version", data=np.array(VTKHDF_VERSION, dtype=np.int64))
+    vtk.create_group("Assembly", track_order=True)
+    return vtk
+
+
+def vtkhdf_write_polydata_block(f, name: str, body_ids, points, point_data: dict = None,
+                                point_data_attrs: dict = None):
+    """Write one PolyData block /VTKHDF/<name> and link it from /VTKHDF/Assembly/<name>.
+
+    Parameters
+    ----------
+    f : h5py.File
+        File on which vtkhdf_init_multiblock() was called.
+    name : str
+        Block name (a display group name).
+    body_ids : sequence of int, length N
+        Written as PointData/body_id (int64): the key that joins the block to /ONDEM.
+    points : array-like (N,3)
+        Body positions, written as float64.
+    point_data : dict {field_name: array-like with first dimension N}
+        Further per-point fields.
+    point_data_attrs : dict {field_name: {attr: value}}
+        Attributes to set on point_data datasets (e.g. quaternion order).
+
+    N may be 0: the block is then written empty, so every display group
+    has a block in every file.
+    """
+    body_ids = np.asarray(body_ids, dtype=np.int64).reshape(-1)
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    n = len(points)
+    if len(body_ids) != n:
+        raise ValueError(f"block {name!r}: {len(body_ids)} body ids for {n} points")
+
+    blk = f["VTKHDF"].create_group(name)
+    _write_ascii_attr(blk, "Type", "PolyData")
+    blk.create_dataset("NumberOfPoints", data=np.array([n], dtype=np.int64))
+    blk.create_dataset("Points", data=points)
+
+    # one vertex cell per point, so the points are rendered
+    _write_cells(blk, "Vertices", np.arange(n), np.arange(n + 1))
+    for section in ("Lines", "Polygons", "Strips"):
+        _write_cells(blk, section, [], [0])
+
+    pd = blk.create_group("PointData")
+    pd.create_dataset("body_id", data=body_ids)
+    for field_name, values in (point_data or {}).items():
+        arr = np.asarray(values)
+        if arr.shape[:1] != (n,):
+            raise ValueError(f"block {name!r}: field {field_name!r} has shape {arr.shape}, expected first dimension {n}")
+        ds = pd.create_dataset(field_name, data=arr)
+        for k, v in (point_data_attrs or {}).get(field_name, {}).items():
+            ds.attrs[k] = v
+
+    f["VTKHDF/Assembly"][name] = h5py.SoftLink(f"/VTKHDF/{name}")
+    return blk
+
+
+def vtkhdf_read_blocks(f, names=None) -> dict:
+    """Read the PolyData blocks of a multiblock /VTKHDF, per body.
+
+    Parameters
+    ----------
+    names : list of str, optional
+        Block names to read, normally scene.display_group_names. Default: the
+        links of /VTKHDF/Assembly.
+
+    Returns
+    -------
+    dict {body_id: {"block": name, "position": ndarray(3), <PointData field>: value}}
+
+    Raises ValueError if a body_id appears more than once.
+    """
+    asm = f["VTKHDF/Assembly"]
+    if names is None:
+        names = list(asm.keys())
+    out = {}
+    for name in names:
+        if name not in asm:
+            raise KeyError(f"block {name!r} is not linked in /VTKHDF/Assembly")
+        blk = asm[name]
+        pd = blk["PointData"]
+        ids = pd["body_id"][:]
+        pts = blk["Points"][:]
+        fields = {k: pd[k][:] for k in pd if k != "body_id"}
+        for i, bid in enumerate(ids):
+            bid = int(bid)
+            if bid in out:
+                raise ValueError(f"body_id {bid} appears in block {out[bid]['block']!r} and in block {name!r}")
+            rec = {"block": name, "position": pts[i]}
+            for k, v in fields.items():
+                rec[k] = v[i]
+            out[bid] = rec
+    return out
