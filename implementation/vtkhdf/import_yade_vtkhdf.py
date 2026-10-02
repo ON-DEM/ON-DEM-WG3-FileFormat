@@ -29,22 +29,22 @@ File layout expected (written by the exporter):
   /VTKHDF/                       MultiBlockDataSet
     <group name>/                one PolyData block per display group
       Points            (N,3)    body positions, float64
-      PointData/
-        body_id         (N,)     int64, joins the block to /ONDEM
-        radius          (N,)     NaN for non-spheres
-        velocity        (N,3)
-        angular_velocity (N,3)
+      PointData/                 every per-body field (NaN / -1 where it does not apply)
+        body_id         (N,)     int64; interactions refer to bodies through it
+        shape_type      (N,)     index into scene shape_names
+        material_id, clump_id, velocity, angular_velocity, mass, inertia,
+        volume, blocked_dofs, radius, dimensions, clump_relative_position,
+        clump_relative_orientation, wall_axis, wall_sense, facet_vertices, ...
         orientation     (N,4)    [w, x, y, z], attribute order = "wxyz"
     Assembly/<group name>        soft link -> /VTKHDF/<group name>
   /ONDEM/
-    Scene/                       attrs: time, timestep; datasets: gravity,
-                                 units, display_group_names
+    Scene/                       attrs: time, timestep, iteration; datasets:
+                                 gravity, units, display_group_names, shape_names
     Materials/<id>/              scalar datasets per material
-    Bodies/<shape group>/        body_id + the fields not in the blocks
-                                 (material_id, clump_id, mass, inertia, volume,
-                                 wall axis/sense, ...)
     Interactions/<type>/         id1, id2, normal, normal_force, shear_force, kn, ks,
                                  friction_coefficient, geom_type, phys_type, ...
+
+Shapes are mapped by name through shape_names, never by a fixed index.
 
 A body's display group is the index of its block's name in
 display_group_names.
@@ -85,7 +85,7 @@ except ImportError:
 
 from yade import O, utils, Vector3, Quaternion, FrictMat
 
-from hdf5_utils import vtkhdf_read_blocks, ondem_read_bodies, ondem_read_interactions
+from hdf5_utils import vtkhdf_read_blocks, ondem_read_interactions
 
 
 # ---------------------------------------------------------------------------
@@ -98,8 +98,8 @@ def _v3(arr):
 
 
 def _read_scene(f):
-    """Return (time, iteration, dt, gravity_Vector3, display_group_names) from /ONDEM/Scene.
-    iteration is a provisional extra; 0 if the file has none."""
+    """Return (time, iteration, dt, gravity_Vector3, display_group_names, shape_names)
+    from /ONDEM/Scene. iteration is optional (default 0); shape_names is mandatory."""
     sc = f["ONDEM/Scene"]
     time    = float(sc.attrs["time"])
     iteration = int(sc.attrs["iteration"]) if "iteration" in sc.attrs else 0
@@ -109,7 +109,11 @@ def _read_scene(f):
         names = [str(n) for n in sc["display_group_names"].asstr()[:]]
     else:
         names = ["all"]                  # schema default
-    return time, iteration, dt, _v3(grav), names
+    if "shape_names" not in sc:
+        raise ValueError("[import] /ONDEM/Scene has no shape_names: the file was written in the layout "
+                         "before 2 October 2026 (bodies in /ONDEM/Bodies), which this importer does not read")
+    shape_names = [str(n) for n in sc["shape_names"].asstr()[:]]
+    return time, iteration, dt, _v3(grav), names, shape_names
 
 
 # ---------------------------------------------------------------------------
@@ -169,30 +173,37 @@ def _read_materials(f):
     return out
 
 
-def _read_bodies(f, names):
+def _read_bodies(f, names, shape_names):
     """
-    Join the VTKHDF blocks and /ONDEM/Bodies on body_id.
-    Returns {body_id: record} with the fields of both parts, plus
-    "display_group" (index of the block's name in names) and "shape_group".
+    Read the bodies from the VTKHDF blocks (every per-body field is there).
+    Returns {body_id: record} with the PointData fields, "position", plus
+    "display_group" (index of the block's name in names) and "shape_group"
+    (the shape name, looked up by name through shape_names).
     """
     blocks = vtkhdf_read_blocks(f, names)
-    ondem  = ondem_read_bodies(f)
-
-    only_blocks = sorted(set(blocks) - set(ondem))
-    only_ondem  = sorted(set(ondem) - set(blocks))
-    if only_blocks or only_ondem:
-        raise ValueError(
-            "[import] /VTKHDF blocks and /ONDEM/Bodies do not hold the same bodies: "
-            f"only in blocks: {only_blocks[:20]}, only in /ONDEM: {only_ondem[:20]}")
-
     group_index = {name: i for i, name in enumerate(names)}
     bodies = {}
+    bad = []
     for bid, rec in blocks.items():
-        merged = dict(ondem[bid])
-        merged.update(rec)
-        merged["display_group"] = group_index[rec["block"]]
-        bodies[bid] = merged
+        st = int(rec.get("shape_type", -1))
+        if not 0 <= st < len(shape_names):
+            bad.append(bid)
+            continue
+        rec["shape_group"] = shape_names[st]
+        rec["display_group"] = group_index[rec["block"]]
+        bodies[bid] = rec
+    if bad:
+        raise ValueError(f"[import] shape_type missing or not an index into shape_names {shape_names}: "
+                         f"body_id {sorted(bad)[:20]}")
     return bodies
+
+
+def _given(v):
+    """False for values that do not apply to a body: NaN (floats), -1 (integers)."""
+    arr = np.asarray(v)
+    if np.issubdtype(arr.dtype, np.integer):
+        return bool(np.all(arr != -1))
+    return not bool(np.any(np.isnan(arr.astype(float))))
 
 
 def _check_engines(restore_gravity):
@@ -286,18 +297,25 @@ def _set_state(b, rec):
         b.state.ori = Quaternion(qw, qx, qy, qz)
 
 
+def _blocked_dofs_string(mask):
+    """base_state.blocked_dofs bitmask (bits 0-2 translations, 3-5 rotations)
+    -> YADE blockedDOFs string, e.g. 7 -> "xyz", 63 -> "xyzXYZ"."""
+    return "".join(c for k, c in enumerate("xyzXYZ") if (int(mask) >> k) & 1)
+
+
 def _set_extras(b, rec):
-    """Per-body state that the schema has no field for yet (provisional extras,
-    see implementation/README.md). Absent in older files: YADE defaults stay."""
-    if "blocked_dofs" in rec:
-        b.state.blockedDOFs = str(rec["blocked_dofs"])
-    if "group_mask" in rec:
+    """blocked_dofs (schema) and the provisional per-body fields (collision mask,
+    damping flag, angular momentum, density scaling; not decided, see
+    implementation/README.md). Absent or not applicable (-1, NaN): YADE defaults stay."""
+    if "blocked_dofs" in rec and _given(rec["blocked_dofs"]):
+        b.state.blockedDOFs = _blocked_dofs_string(rec["blocked_dofs"])
+    if "group_mask" in rec and _given(rec["group_mask"]):
         b.groupMask = int(rec["group_mask"])
-    if "is_damped" in rec:
+    if "is_damped" in rec and _given(rec["is_damped"]):
         b.state.isDamped = bool(rec["is_damped"])
-    if "angular_momentum" in rec:
+    if "angular_momentum" in rec and _given(rec["angular_momentum"]):
         b.state.angMom = _v3(rec["angular_momentum"])
-    if "density_scaling" in rec:
+    if "density_scaling" in rec and _given(rec["density_scaling"]):
         b.state.densityScaling = float(rec["density_scaling"])
 
 
@@ -317,9 +335,9 @@ def _make_sphere(rec, yade_mat):
 
 
 def _make_wall(rec, yade_mat):
-    axis = int(rec["axis"])
+    axis = int(rec["wall_axis"])
     b = utils.wall(position=float(rec["position"][axis]), axis=axis,
-                   sense=int(rec["sense"]), material=yade_mat)
+                   sense=int(rec["wall_sense"]), material=yade_mat)
     _set_state(b, rec)
     return b
 
@@ -496,9 +514,9 @@ def import_vtkhdf(filename,
     _check_engines(restore_gravity)
 
     with h5py.File(filename, "r") as f:
-        time, iteration, dt, gravity, names = _read_scene(f)
+        time, iteration, dt, gravity, names, shape_names = _read_scene(f)
         materials    = _read_materials(f)
-        bodies       = _read_bodies(f, names)
+        bodies       = _read_bodies(f, names, shape_names)
         interactions = ondem_read_interactions(f) if restore_interactions else []
 
     _check_file(bodies, materials, interactions)

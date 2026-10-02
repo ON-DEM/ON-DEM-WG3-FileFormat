@@ -19,7 +19,7 @@ import h5py
 # Use hdf5_utils.py from implementation/vtkhdf, not a copy in this folder
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from hdf5_utils import (vtkhdf_init_multiblock, vtkhdf_write_polydata_block, vtkhdf_read_blocks,
-                        validate_display_groups, point_array, hdf5_write_quaternion_array,
+                        validate_display_groups, point_array, column_array, hdf5_write_quaternion_array,
                         QUATERNION_ORDER, VTKHDF_VERSION)
 
 NAMES = ["particles", "geometry", "unused"]          # "unused" stays empty
@@ -121,6 +121,23 @@ def check_validation():
     print("  validate_display_groups: OK")
 
 
+def check_not_applicable():
+    """Values that do not apply to a body: NaN for floats, -1 for integers and booleans."""
+    f = column_array([1.5, None], "scalar_float")
+    assert f.dtype == np.float64 and f[0] == 1.5 and np.isnan(f[1])
+    i = column_array([3, None], "scalar_int")
+    assert i.dtype == np.int64 and list(i) == [3, -1]
+    b = column_array([True, False, None], "scalar_bool")
+    assert list(b) == [1, 0, -1]
+    v = column_array([(1, 2, 3), None], "vector3")
+    assert v.shape == (2, 3) and np.isnan(v[1]).all()
+    q = column_array([(1, 0, 0, 0), None], "quaternion")
+    assert q.shape == (2, 4) and np.isnan(q[1]).all()
+    m = column_array([[[1, 0, 0], [0, 1, 0], [0, 0, 1]], None], "matrix3")
+    assert m.shape == (2, 9) and np.isnan(m[1]).all()
+    print("  not applicable -> NaN / -1: OK")
+
+
 def check_quaternion_helper(path):
     with h5py.File(path, "a") as f:
         g = f.require_group("ONDEM/test")
@@ -171,5 +188,6 @@ if __name__ == "__main__":
         check_read_back(path)
         check_vtk(path)
         check_validation()
+        check_not_applicable()
         check_quaternion_helper(path)
     print("ALL OK")

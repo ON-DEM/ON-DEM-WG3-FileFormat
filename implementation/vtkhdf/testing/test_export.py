@@ -167,8 +167,41 @@ with h5py.File(out, "r") as f:
         for v in ((1, 0, 0), (0, 1, 0), (0, 0, 1)):
             check(np.allclose(rotate(q, v), np.array(yq * Vector3(*v)), atol=1e-12),
                   f"body {bid}: q v q^-1 differs from YADE's rotation of {v}")
-    for sg in f["ONDEM/Bodies"]:
-        check("position" not in f["ONDEM/Bodies"][sg], f"/ONDEM/Bodies/{sg} must not store position")
+    # all per-body data in the blocks (decision 12): /ONDEM keeps scene, materials, interactions
+    check(sorted(f["ONDEM"].keys()) == ["Interactions", "Materials", "Scene"],
+          f"/ONDEM holds {sorted(f['ONDEM'].keys())}, expected Interactions, Materials, Scene only")
+    shape_names = list(f["ONDEM/Scene/shape_names"].asstr()[:])
+    print(f"  shape_names: {shape_names}")
+    arrays = {name: sorted(f["VTKHDF"][name]["PointData"].keys()) for name in NAMES}
+    check(all(a == arrays[NAMES[0]] for a in arrays.values()), f"every block carries the same arrays: {arrays}")
+    for fld in ("body_id", "shape_type", "material_id", "clump_id", "velocity", "angular_velocity", "orientation",
+                "mass", "inertia", "volume", "blocked_dofs", "radius", "dimensions", "wall_axis", "wall_sense",
+                "group_mask", "is_damped", "angular_momentum", "density_scaling"):
+        check(fld in arrays[NAMES[0]], f"block field {fld} missing")
+    yade_shape = {"Sphere": "sphere", "Wall": "wall", "Box": "box"}
+    for name in NAMES:
+        pd = f["VTKHDF"][name]["PointData"]
+        for k, bid in enumerate(int(v) for v in pd["body_id"][:]):
+            b = O.bodies[bid]
+            shape = shape_names[int(pd["shape_type"][k])]          # by name, never by a fixed index
+            check(shape == yade_shape[type(b.shape).__name__], f"body {bid}: shape {shape!r}")
+            expected_mask = sum(1 << "xyzXYZ".index(c) for c in b.state.blockedDOFs)
+            check(int(pd["blocked_dofs"][k]) == expected_mask, f"body {bid}: blocked_dofs {int(pd['blocked_dofs'][k])} != {expected_mask}")
+            if shape == "sphere":
+                check(pd["radius"][k] == b.shape.radius and int(pd["wall_axis"][k]) == -1
+                      and np.isnan(pd["dimensions"][k]).all(), f"body {bid}: sphere fields, NaN / -1 elsewhere")
+            if shape == "wall":
+                check(np.isnan(pd["radius"][k]) and int(pd["wall_axis"][k]) == b.shape.axis
+                      and int(pd["wall_sense"][k]) == b.shape.sense, f"body {bid}: wall fields, NaN radius")
+            if shape == "box":
+                check(np.isnan(pd["radius"][k]) and np.allclose(pd["dimensions"][k], 2 * np.array(b.shape.extents)),
+                      f"body {bid}: box dimensions, NaN radius")
+            check(int(pd["clump_id"][k]) == -1, f"body {bid}: clump_id -1 (no clumps in this test)")
+    blocked = {bid: int(v) for name in NAMES for bid, v in zip(f["VTKHDF"][name]["PointData/body_id"][:],
+                                                                 f["VTKHDF"][name]["PointData/blocked_dofs"][:])}
+    check(blocked[7] == 7 and all(blocked[w] == 63 for w in range(5)) and blocked[BOX_ID] == 63,
+          f"blocked_dofs: sphere 7 -> 7, walls and box -> 63 ({blocked[7]}, {[blocked[w] for w in range(5)]}, {blocked[BOX_ID]})")
+    check(int(f["ONDEM/Scene"].attrs["iteration"]) == iter_at_export, "scene.iteration")
 
     # interactions: all real ones written, ids found in the blocks
     ig = f["ONDEM/Interactions"]

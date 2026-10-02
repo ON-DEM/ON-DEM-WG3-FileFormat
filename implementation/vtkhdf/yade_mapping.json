@@ -11,11 +11,9 @@
     "timestep":  "O.dt",
     "gravity":   "_get_gravity()",
     "units":     "['second', 'meter', 'kilogram']",
-    "display_group_names": "_display_group_names()"
-  },
-
-  "_extra_scene_fields": {
-    "iteration": "O.iter + (int(O.tags['ondem_iteration_offset']) if 'ondem_iteration_offset' in O.tags.keys() else 0)"
+    "display_group_names": "_display_group_names()",
+    "iteration": "O.iter + (int(O.tags['ondem_iteration_offset']) if 'ondem_iteration_offset' in O.tags.keys() else 0)",
+    "shape_names": "_shape_names()"
   },
 
   "_refuse_if": {
@@ -25,8 +23,11 @@
   "base_body": {
     "body_id":    "b.id",
     "material_id":"b.material.id",
-    "clump_id":   "b.clumpId",
-    "display_group": "_display_group(b)"
+    "clump_id":   "-1 if b.isClump else b.clumpId",
+    "display_group": "_display_group(b)",
+    "shape_type": "_shape_type_index(b)",
+    "clump_relative_position":    "O.bodies[b.clumpId].shape.members[b.id][0] if b.isClumpMember else None",
+    "clump_relative_orientation": "(lambda q: [q[3], q[0], q[1], q[2]])(O.bodies[b.clumpId].shape.members[b.id][1]) if b.isClumpMember else None"
   },
 
   "base_state": {
@@ -36,11 +37,11 @@
     "angular_velocity": "b.state.angVel",
     "mass":             "b.state.mass",
     "inertia":          "_diag3(b.state.inertia)",
-    "volume":           "_sphere_volume(b)"
+    "volume":           "_sphere_volume(b)",
+    "blocked_dofs":     "sum(1 << 'xyzXYZ'.index(c) for c in b.state.blockedDOFs)"
   },
 
   "_extra_body_fields": {
-    "blocked_dofs":     "b.state.blockedDOFs",
     "group_mask":       "b.groupMask",
     "is_damped":        "b.state.isDamped",
     "angular_momentum": "b.state.angMom",
@@ -58,14 +59,16 @@
     "Clump":     "clump"
   },
 
+  "_shape_names": ["sphere", "box", "polyhedron", "clump", "wall", "facet", "other"],
+
   "_extra_shapes": {
     "wall": {
-      "axis":  "b.shape.axis",
-      "sense": "b.shape.sense"
+      "axis":  "b.shape.axis if type(b.shape).__name__ == 'Wall' else None",
+      "sense": "b.shape.sense if type(b.shape).__name__ == 'Wall' else None"
     },
     "facet": {
-      "vertices": "[[v[0],v[1],v[2]] for v in b.shape.vertices]",
-      "normal":   "b.shape.normal"
+      "vertices": "[[v[0],v[1],v[2]] for v in b.shape.vertices] if type(b.shape).__name__ == 'Facet' else None",
+      "normal":   "b.shape.normal if type(b.shape).__name__ == 'Facet' else None"
     }
   },
 

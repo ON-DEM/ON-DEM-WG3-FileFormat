@@ -257,16 +257,16 @@ def point_array(values, width: int = None):
 def column_array(values, hdf5_type: str):
     """Turn a list of per-item values of one schema type into an array for HDF5.
 
-    Missing values (None): NaN for float types, -1 for integers (the schema's
-    "no id" value), 0 for booleans. Returns None for types that cannot be written
-    as a column (the caller skips the field).
+    Values that do not apply (None): NaN for float types, -1 for integers and
+    booleans (decisions of 2 October 2026). Returns None for types that cannot be
+    written as a column (the caller skips the field).
     """
     if hdf5_type == "scalar_float":
         return point_array(values)
     if hdf5_type == "scalar_int":
         return np.array([-1 if v is None else int(v) for v in values], dtype=np.int64)
     if hdf5_type == "scalar_bool":
-        return np.array([0 if v is None else int(bool(v)) for v in values], dtype=np.int8)
+        return np.array([-1 if v is None else int(bool(v)) for v in values], dtype=np.int8)
     if hdf5_type == "vector3":
         return point_array(values, 3)
     if hdf5_type == "quaternion":
@@ -431,35 +431,6 @@ def vtkhdf_read_blocks(f, names=None) -> dict:
             if bid in out:
                 raise ValueError(f"body_id {bid} appears in block {out[bid]['block']!r} and in block {name!r}")
             rec = {"block": name, "position": pts[i]}
-            for k, v in fields.items():
-                rec[k] = v[i]
-            out[bid] = rec
-    return out
-
-
-def ondem_read_bodies(f) -> dict:
-    """Read the per-body datasets of /ONDEM/Bodies/<shape group>/, per body.
-
-    Returns dict {body_id: {"shape_group": name, <field>: value}} with every
-    dataset whose first dimension is the group's number of bodies. Strings
-    are decoded. Raises ValueError if a body_id appears more than once.
-    """
-    out = {}
-    if "ONDEM/Bodies" not in f:
-        return out
-    for sg, g in f["ONDEM/Bodies"].items():
-        ids = g["body_id"][:]
-        n = len(ids)
-        fields = {}
-        for k, ds in g.items():
-            if k == "body_id" or not isinstance(ds, h5py.Dataset) or ds.shape[:1] != (n,):
-                continue
-            fields[k] = ds.asstr()[:] if h5py.check_string_dtype(ds.dtype) else ds[:]
-        for i, bid in enumerate(ids):
-            bid = int(bid)
-            if bid in out:
-                raise ValueError(f"body_id {bid} appears in /ONDEM/Bodies/{out[bid]['shape_group']} and /ONDEM/Bodies/{sg}")
-            rec = {"shape_group": sg}
             for k, v in fields.items():
                 rec[k] = v[i]
             out[bid] = rec

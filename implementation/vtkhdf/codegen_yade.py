@@ -282,61 +282,58 @@ def _gen_materials_exporter(schema: Schema, mapping: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Bodies: one VTKHDF block per display group + /ONDEM/Bodies
+# Bodies: one VTKHDF block per display group, every per-body field in the blocks
 # ---------------------------------------------------------------------------
-
-# Per-body fields written in the VTKHDF blocks as PointData, besides Points
-# (= position) and body_id. PROVISIONAL split (open point, to agree with Bruno):
-# every other per-body field goes to /ONDEM/Bodies/<shape group>/.
-# Geometry is stored once: position only in the blocks, never in /ONDEM.
-_BLOCK_FIELDS = ["radius", "velocity", "angular_velocity", "orientation"]
+# Decision 12 (2 October 2026): every per-body field is PointData of the block
+# the body is in; /ONDEM keeps the scene, the materials and the interactions.
+# Fields that do not apply to a body are NaN (floats) or -1 (integers).
 
 # Schema classes that hold per-body data (fields are merged in this order)
 _BODY_CLASSES = ["base_body", "base_state", "thermal", "liquid_film"]
 
-# Schema shape classes; the class name is the group name in /ONDEM/Bodies
-_SHAPE_CLASSES = ["sphere", "box", "polyhedron"]
+# Schema shape classes whose fields are written (NaN / -1 for other shapes)
+_SHAPE_CLASSES = ["sphere", "box", "polyhedron", "clump"]
 
-# HDF5 types of the shape fields that are not in the schema (mapping "_extra_shapes")
 # HDF5 types of per-body fields that are not in the schema yet (mapping
-# "_extra_body_fields"; provisional, each one is a question for Bruno)
+# "_extra_body_fields"; provisional, not decided)
 _EXTRA_BODY_FIELD_TYPES = {
-    "blocked_dofs": "string", "group_mask": "scalar_int", "is_damped": "scalar_bool",
+    "group_mask": "scalar_int", "is_damped": "scalar_bool",
     "angular_momentum": "vector3", "density_scaling": "scalar_float",
 }
 
+# HDF5 types of the fields of shapes that are not in the schema yet (mapping
+# "_extra_shapes"; written as <shape>_<field>, non-normative)
 _EXTRA_SHAPE_FIELD_TYPES = {
     "axis": "scalar_int", "sense": "scalar_int",
     "normal": "vector3", "vertices": "matrix3",
 }
 
-# Never written as /ONDEM datasets: position and body_id are in the blocks
-# (body_id also in /ONDEM, as the join key, see below); display_group is the
-# block the body is in.
-_NOT_IN_ONDEM = {"position", "display_group"} | set(_BLOCK_FIELDS)
+_WRITABLE = ("scalar_float", "scalar_int", "scalar_bool", "vector3", "quaternion", "matrix3")
 
 
-def _field_entry(fld: FieldDef, expr: str, var: str, cls_name: str) -> list:
+def _field_entry(fld: FieldDef, expr: str, var: str, cls_name: str, mandatory: bool = None) -> list:
     tag = "[mandatory]" if fld.mandatory else "[optional]" if fld.optional else ""
+    m = fld.mandatory if mandatory is None else mandatory
     return [
         f"    # {tag} {cls_name}.{fld.name}: {fld.type_str} {fld.units}".rstrip(),
-        f'    ("{fld.name}", "{fld.hdf5_type}", {fld.mandatory}, lambda {var}: {expr}),',
+        f'    ("{fld.name}", "{fld.hdf5_type}", {m}, lambda {var}: {expr}),',
     ]
 
 
 def _gen_bodies_exporter(schema: Schema, mapping: dict) -> str:
-    """Generate _export_bodies: /VTKHDF blocks per display group and /ONDEM/Bodies."""
+    """Generate _export_bodies: one PolyData block per display group with every per-body field."""
     collections = mapping.get("_collections", {})
     bodies_expr = collections.get("bodies", "[]")
     group_expr = _lookup_mapping(mapping, "base_body", "display_group") or "0"
     shape_type_expr = mapping.get("_shape_type", "None")
     shape_groups = mapping.get("_shape_groups", {})
+    shape_names = mapping.get("_shape_names", [])
     extra_shapes = mapping.get("_extra_shapes", {})
 
-    # --- per-body fields: body + state classes, and the shape fields that go in the blocks
     lines = [
-        "# Per-body fields: (name, hdf5 type, mandatory, getter).",
-        "# Generated from the schema; getters are the mapping expressions.",
+        "# Per-body fields: (name, hdf5 type, always written, getter).",
+        "# Generated from the schema; getters are the mapping expressions. A field that is",
+        "# not always written is written when at least one body has a value.",
         "_BODY_FIELDS = [",
     ]
     seen = set()
@@ -357,71 +354,62 @@ def _gen_bodies_exporter(schema: Schema, mapping: dict) -> str:
                 lines.append(f"    # UNMAPPED {cls_name}.{fld.name}")
                 continue
             lines += _field_entry(fld, expr, "b", cls_name)
+    lines.append("    # shape fields: NaN / -1 for bodies of other shapes")
     for cls_name in _SHAPE_CLASSES:
         cls = schema.classes.get(cls_name)
         for fld in (cls.fields if cls else []):
-            if fld.name in _BLOCK_FIELDS and fld.name not in seen:
-                seen.add(fld.name)
-                expr = _lookup_mapping(mapping, cls_name, fld.name)
-                if expr:
-                    lines += _field_entry(fld, expr, "b", cls_name)
+            if fld.name in seen:
+                continue
+            seen.add(fld.name)
+            expr = _lookup_mapping(mapping, cls_name, fld.name)
+            if not expr:
+                lines.append(f"    # UNMAPPED {cls_name}.{fld.name}")
+                continue
+            if fld.hdf5_type not in _WRITABLE:
+                lines.append(f"    # SKIPPED {cls_name}.{fld.name}: type {fld.type_str}, variable length "
+                             f"per body (see the shapes proposal)")
+                continue
+            lines += _field_entry(fld, expr, "b", cls_name, mandatory=False)
+    for group_name, fields in extra_shapes.items():
+        lines.append(f"    # {group_name}: shape not in the schema yet (non-normative)")
+        for fname, expr in fields.items():
+            h = _EXTRA_SHAPE_FIELD_TYPES.get(fname, "scalar_float")
+            lines.append(f'    ("{group_name}_{fname}", "{h}", False, lambda b: {expr}),')
     extra_body = mapping.get("_extra_body_fields", {})
     if extra_body:
-        lines.append("    # not in the schema yet (provisional, mapping _extra_body_fields)")
+        lines.append("    # not in the schema (provisional, not decided; mapping _extra_body_fields)")
     for fname, expr in extra_body.items():
         h = _EXTRA_BODY_FIELD_TYPES.get(fname, "scalar_float")
         lines.append(f'    ("{fname}", "{h}", True, lambda b: {expr}),')
     lines.append("]")
     lines.append("")
-
-    # --- shape-specific fields written in /ONDEM/Bodies/<shape group>
-    lines.append("# Shape fields per /ONDEM/Bodies group (fields that are not in the blocks)")
-    lines.append("_SHAPE_FIELDS = {")
-    for cls_name in _SHAPE_CLASSES:
-        cls = schema.classes.get(cls_name)
-        if not cls:
-            continue
-        lines.append(f'  "{cls_name}": [')
-        for fld in cls.fields:
-            if fld.name in _BLOCK_FIELDS:
-                lines.append(f"    # {fld.name}: in the VTKHDF blocks")
-                continue
-            expr = _lookup_mapping(mapping, cls_name, fld.name)
-            if not expr:
-                lines.append(f"    # UNMAPPED {cls_name}.{fld.name}")
-                continue
-            if fld.hdf5_type not in ("scalar_float", "scalar_int", "scalar_bool", "vector3", "quaternion", "matrix3"):
-                lines.append(f"    # SKIPPED {cls_name}.{fld.name}: type {fld.type_str} cannot be written per body yet")
-                continue
-            lines += ["  " + l for l in _field_entry(fld, expr, "b", cls_name)]
-        lines.append("  ],")
-    for group_name, fields in extra_shapes.items():
-        lines.append(f'  # {group_name}: not in the schema yet (non-normative)')
-        lines.append(f'  "{group_name}": [')
-        for fname, expr in fields.items():
-            h = _EXTRA_SHAPE_FIELD_TYPES.get(fname, "scalar_float")
-            lines.append(f'      ("{fname}", "{h}", True, lambda b: {expr}),')
-        lines.append("  ],")
-    lines.append("}")
-    lines.append("")
-    lines.append(f"_BLOCK_FIELDS = {_BLOCK_FIELDS!r}")
-    lines.append(f"_NOT_IN_ONDEM = {sorted(_NOT_IN_ONDEM)!r}")
+    lines.append("# code shape type -> schema shape name, and scene.shape_names (fixed list from the")
+    lines.append("# mapping; readers map shapes by name through the list, never by a fixed index)")
     lines.append(f"_SHAPE_GROUPS = {shape_groups!r}")
+    lines.append(f"_SHAPE_NAMES = {shape_names!r}")
     lines.append("")
-    lines.append("def _shape_group(b):")
-    lines.append('    """/ONDEM/Bodies group of body b; "other" for shapes not handled yet."""')
+    lines.append("def _shape_names():")
+    lines.append('    """scene.shape_names."""')
+    lines.append("    return list(_SHAPE_NAMES)")
+    lines.append("")
+    lines.append("def _shape_name(b):")
+    lines.append('    """Schema shape name of body b; "other" for shapes not supported yet."""')
     lines.append(f"    try: return _SHAPE_GROUPS.get({shape_type_expr}, \"other\")")
     lines.append('    except Exception: return "other"')
     lines.append("")
-    lines.append("def _shape_type(b):")
+    lines.append("def _shape_type_index(b):")
+    lines.append('    """base_body.shape_type: index of the shape name in scene.shape_names."""')
+    lines.append("    return _SHAPE_NAMES.index(_shape_name(b))")
+    lines.append("")
+    lines.append("def _code_shape_type(b):")
     lines.append(f"    try: return str({shape_type_expr})")
-    lines.append('    except Exception: return ""')
+    lines.append('    except Exception: return "?"')
     lines.append("")
 
     lines += [
         "def _export_bodies(f):",
-        '    """Write the bodies: one PolyData block per display group in /VTKHDF,',
-        '    the per-body fields that are not in the blocks in /ONDEM/Bodies/<shape group>/."""',
+        '    """Write the bodies: one PolyData block per display group in /VTKHDF, every',
+        '    per-body field as PointData; Points = positions (float64)."""',
         f"    bodies = {bodies_expr}",
         "    names = _display_group_names()",
         "    cols = _collect(bodies, _BODY_FIELDS)",
@@ -430,43 +418,27 @@ def _gen_bodies_exporter(schema: Schema, mapping: dict) -> str:
         '        raise ValueError("[export_vtkhdf] body ids must be unique and defined")',
         f"    groups = [{group_expr} for b in bodies]",
         "    validate_display_groups(names, dict(zip(body_ids, groups)))",
-        "    types = {name: h for name, h, _m, _g in _BODY_FIELDS}",
+        "    other = sorted({_code_shape_type(b) for b in bodies if _shape_name(b) == 'other'})",
+        "    if other:",
+        '        print(f"[export_vtkhdf] Warning: shapes {other} are not supported by the format yet; "',
+        '              f"they are written with shape \'other\' and cannot be restored")',
         "",
-        "    # 1. /VTKHDF: one PolyData block per display group, empty groups included",
+        "    # the same arrays in every block: a field is written when it is always written",
+        "    # or when at least one body has a value; NaN / -1 elsewhere",
+        "    types = {name: h for name, h, _m, _g in _BODY_FIELDS}",
+        '    written = [name for name, h, always, _g in _BODY_FIELDS if name not in ("position", "body_id")',
+        "               and (always or any(v is not None for v in cols[name]))]",
+        "",
         "    vtkhdf_init_multiblock(f)",
         "    for gi, name in enumerate(names):",
         "        idx = [k for k, g in enumerate(groups) if g == gi]",
         "        sel = lambda col: [col[k] for k in idx]",
-        "        block_fields = [n for n in _BLOCK_FIELDS if n in cols]",
         "        vtkhdf_write_polydata_block(",
         "            f, name, sel(body_ids),",
         '            points=point_array(sel(cols["position"]), 3),',
-        "            point_data={n: column_array(sel(cols[n]), types[n]) for n in block_fields},",
-        '            point_data_attrs={n: {"order": QUATERNION_ORDER} for n in block_fields if types[n] == "quaternion"},',
+        "            point_data={n: column_array(sel(cols[n]), types[n]) for n in written},",
+        '            point_data_attrs={n: {"order": QUATERNION_ORDER} for n in written if types[n] == "quaternion"},',
         "        )",
-        "",
-        "    # 2. /ONDEM/Bodies/<shape group>: body_id (join key) + fields not in the blocks",
-        '    bodies_grp = f.require_group("ONDEM/Bodies")',
-        "    shape_groups = [_shape_group(b) for b in bodies]",
-        "    for sg in sorted(set(shape_groups)):",
-        "        idx = [k for k, s in enumerate(shape_groups) if s == sg]",
-        "        sel = lambda col: [col[k] for k in idx]",
-        "        members = sel(bodies)",
-        "        shape_fields = _SHAPE_FIELDS.get(sg, [])",
-        "        shape_cols = _collect(members, shape_fields)",
-        "        g = bodies_grp.create_group(sg)",
-        '        g.attrs["count"] = len(idx)',
-        '        hdf5_write_column(g, "body_id", sel(body_ids), "scalar_int")',
-        "        for name, h, mandatory, _get in _BODY_FIELDS + shape_fields:",
-        '            if name in _NOT_IN_ONDEM or name == "body_id":',
-        "                continue",
-        "            vals = sel(cols[name]) if name in cols else shape_cols[name]",
-        "            if not mandatory and all(v is None for v in vals):",
-        "                continue",
-        "            hdf5_write_column(g, name, vals, h)",
-        '        if sg == "other":',
-        '            hdf5_write_string_array(g, "shape_type", [_shape_type(b) for b in members])',
-        "            g.attrs[\"note\"] = \"shape type not supported by the ON-DEM schema yet\"",
         "",
         "    return len(bodies)",
         "",

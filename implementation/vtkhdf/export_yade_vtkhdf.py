@@ -103,16 +103,17 @@ def _export_scene(f):
     #  time: float [T]
     hdf5_write_field(grp, "time", "scalar_float", O.time + (float(O.tags['ondem_time_offset']) if 'ondem_time_offset' in O.tags.keys() else 0.0), scalar_as_dataset=False)
 
-    # UNMAPPED: iteration (int)
+    # [optional] iteration: int [$-$]
+    hdf5_write_field(grp, "iteration", "scalar_int", O.iter + (int(O.tags['ondem_iteration_offset']) if 'ondem_iteration_offset' in O.tags.keys() else 0), scalar_as_dataset=False)
+
     #  gravity: Vector3 [L/T²]
     hdf5_write_field(grp, "gravity", "vector3", _get_gravity(), scalar_as_dataset=False)
 
     # [optional] display_group_names: List[str] [$-$]
     hdf5_write_field(grp, "display_group_names", "string_list", _display_group_names(), scalar_as_dataset=False)
 
-    # UNMAPPED: shape_names (List[str])
-    # not in the schema yet (provisional, mapping _extra_scene_fields)
-    hdf5_write_field(grp, "iteration", "scalar_int", O.iter + (int(O.tags['ondem_iteration_offset']) if 'ondem_iteration_offset' in O.tags.keys() else 0), scalar_as_dataset=False)
+    # [mandatory] shape_names: List[str] [$-$]
+    hdf5_write_field(grp, "shape_names", "string_list", _shape_names(), scalar_as_dataset=False)
 
 
 def _export_materials(f):
@@ -173,20 +174,24 @@ def _export_materials(f):
             print(f"[export_vtkhdf] Warning: material {mat.id}: mandatory field shear_damping not written ({_e})")
 
 
-# Per-body fields: (name, hdf5 type, mandatory, getter).
-# Generated from the schema; getters are the mapping expressions.
+# Per-body fields: (name, hdf5 type, always written, getter).
+# Generated from the schema; getters are the mapping expressions. A field that is
+# not always written is written when at least one body has a value.
 _BODY_FIELDS = [
     # [mandatory] base_body.material_id: int [$-$]
     ("material_id", "scalar_int", True, lambda b: b.material.id),
     # [mandatory] base_body.clump_id: int [$-$]
-    ("clump_id", "scalar_int", True, lambda b: b.clumpId),
+    ("clump_id", "scalar_int", True, lambda b: -1 if b.isClump else b.clumpId),
     # [mandatory] base_body.body_id: int [$-$]
     ("body_id", "scalar_int", True, lambda b: b.id),
     # SKIPPED base_body.body_state: nested type type(base_state)
     # SKIPPED base_body.body_shape: nested type type(base_shape)
-    # UNMAPPED base_body.shape_type
-    # UNMAPPED base_body.clump_relative_position
-    # UNMAPPED base_body.clump_relative_orientation
+    # [mandatory] base_body.shape_type: int [$-$]
+    ("shape_type", "scalar_int", True, lambda b: _shape_type_index(b)),
+    # [optional] base_body.clump_relative_position: Vector3 [$L$]
+    ("clump_relative_position", "vector3", False, lambda b: O.bodies[b.clumpId].shape.members[b.id][0] if b.isClumpMember else None),
+    # [optional] base_body.clump_relative_orientation: Quaternion [$-$]
+    ("clump_relative_orientation", "quaternion", False, lambda b: (lambda q: [q[3], q[0], q[1], q[2]])(O.bodies[b.clumpId].shape.members[b.id][1]) if b.isClumpMember else None),
     # [mandatory] base_state.position: Vector3 [$L$]
     ("position", "vector3", True, lambda b: b.state.pos),
     # [mandatory] base_state.velocity: Vector3 [$L T^{-1}$]
@@ -201,61 +206,56 @@ _BODY_FIELDS = [
     ("inertia", "matrix3", True, lambda b: _diag3(b.state.inertia)),
     # [mandatory] base_state.volume: float [$L^{3}$]
     ("volume", "scalar_float", True, lambda b: _sphere_volume(b)),
-    # UNMAPPED base_state.blocked_dofs
+    # [optional] base_state.blocked_dofs: int [$-$]
+    ("blocked_dofs", "scalar_int", False, lambda b: sum(1 << 'xyzXYZ'.index(c) for c in b.state.blockedDOFs)),
     # [optional] thermal.temperature: float [$\Theta$]
     ("temperature", "scalar_float", False, lambda b: b.state.T),
     # [optional] liquid_film.liquid_film_volume: float [L^3]
     ("liquid_film_volume", "scalar_float", False, lambda b: b.state.liquidFilmVolume),
+    # shape fields: NaN / -1 for bodies of other shapes
     # [mandatory] sphere.radius: float
-    ("radius", "scalar_float", True, lambda b: b.shape.radius),
-    # not in the schema yet (provisional, mapping _extra_body_fields)
-    ("blocked_dofs", "string", True, lambda b: b.state.blockedDOFs),
+    ("radius", "scalar_float", False, lambda b: b.shape.radius),
+    # [mandatory] box.dimensions: Vector3
+    ("dimensions", "vector3", False, lambda b: [b.shape.extents[0]*2, b.shape.extents[1]*2, b.shape.extents[2]*2]),
+    # SKIPPED polyhedron.vertices: type list, variable length per body (see the shapes proposal)
+    # wall: shape not in the schema yet (non-normative)
+    ("wall_axis", "scalar_int", False, lambda b: b.shape.axis if type(b.shape).__name__ == 'Wall' else None),
+    ("wall_sense", "scalar_int", False, lambda b: b.shape.sense if type(b.shape).__name__ == 'Wall' else None),
+    # facet: shape not in the schema yet (non-normative)
+    ("facet_vertices", "matrix3", False, lambda b: [[v[0],v[1],v[2]] for v in b.shape.vertices] if type(b.shape).__name__ == 'Facet' else None),
+    ("facet_normal", "vector3", False, lambda b: b.shape.normal if type(b.shape).__name__ == 'Facet' else None),
+    # not in the schema (provisional, not decided; mapping _extra_body_fields)
     ("group_mask", "scalar_int", True, lambda b: b.groupMask),
     ("is_damped", "scalar_bool", True, lambda b: b.state.isDamped),
     ("angular_momentum", "vector3", True, lambda b: b.state.angMom),
     ("density_scaling", "scalar_float", True, lambda b: b.state.densityScaling),
 ]
 
-# Shape fields per /ONDEM/Bodies group (fields that are not in the blocks)
-_SHAPE_FIELDS = {
-  "sphere": [
-    # radius: in the VTKHDF blocks
-  ],
-  "box": [
-      # [mandatory] box.dimensions: Vector3
-      ("dimensions", "vector3", True, lambda b: [b.shape.extents[0]*2, b.shape.extents[1]*2, b.shape.extents[2]*2]),
-  ],
-  "polyhedron": [
-    # SKIPPED polyhedron.vertices: type list cannot be written per body yet
-  ],
-  # wall: not in the schema yet (non-normative)
-  "wall": [
-      ("axis", "scalar_int", True, lambda b: b.shape.axis),
-      ("sense", "scalar_int", True, lambda b: b.shape.sense),
-  ],
-  # facet: not in the schema yet (non-normative)
-  "facet": [
-      ("vertices", "matrix3", True, lambda b: [[v[0],v[1],v[2]] for v in b.shape.vertices]),
-      ("normal", "vector3", True, lambda b: b.shape.normal),
-  ],
-}
-
-_BLOCK_FIELDS = ['radius', 'velocity', 'angular_velocity', 'orientation']
-_NOT_IN_ONDEM = ['angular_velocity', 'display_group', 'orientation', 'position', 'radius', 'velocity']
+# code shape type -> schema shape name, and scene.shape_names (fixed list from the
+# mapping; readers map shapes by name through the list, never by a fixed index)
 _SHAPE_GROUPS = {'Sphere': 'sphere', 'Box': 'box', 'Polyhedra': 'polyhedron', 'Wall': 'wall', 'Facet': 'facet', 'Clump': 'clump'}
+_SHAPE_NAMES = ['sphere', 'box', 'polyhedron', 'clump', 'wall', 'facet', 'other']
 
-def _shape_group(b):
-    """/ONDEM/Bodies group of body b; "other" for shapes not handled yet."""
+def _shape_names():
+    """scene.shape_names."""
+    return list(_SHAPE_NAMES)
+
+def _shape_name(b):
+    """Schema shape name of body b; "other" for shapes not supported yet."""
     try: return _SHAPE_GROUPS.get(type(b.shape).__name__, "other")
     except Exception: return "other"
 
-def _shape_type(b):
+def _shape_type_index(b):
+    """base_body.shape_type: index of the shape name in scene.shape_names."""
+    return _SHAPE_NAMES.index(_shape_name(b))
+
+def _code_shape_type(b):
     try: return str(type(b.shape).__name__)
-    except Exception: return ""
+    except Exception: return "?"
 
 def _export_bodies(f):
-    """Write the bodies: one PolyData block per display group in /VTKHDF,
-    the per-body fields that are not in the blocks in /ONDEM/Bodies/<shape group>/."""
+    """Write the bodies: one PolyData block per display group in /VTKHDF, every
+    per-body field as PointData; Points = positions (float64)."""
     bodies = [b for b in O.bodies if b is not None]
     names = _display_group_names()
     cols = _collect(bodies, _BODY_FIELDS)
@@ -264,43 +264,27 @@ def _export_bodies(f):
         raise ValueError("[export_vtkhdf] body ids must be unique and defined")
     groups = [_display_group(b) for b in bodies]
     validate_display_groups(names, dict(zip(body_ids, groups)))
-    types = {name: h for name, h, _m, _g in _BODY_FIELDS}
+    other = sorted({_code_shape_type(b) for b in bodies if _shape_name(b) == 'other'})
+    if other:
+        print(f"[export_vtkhdf] Warning: shapes {other} are not supported by the format yet; "
+              f"they are written with shape 'other' and cannot be restored")
 
-    # 1. /VTKHDF: one PolyData block per display group, empty groups included
+    # the same arrays in every block: a field is written when it is always written
+    # or when at least one body has a value; NaN / -1 elsewhere
+    types = {name: h for name, h, _m, _g in _BODY_FIELDS}
+    written = [name for name, h, always, _g in _BODY_FIELDS if name not in ("position", "body_id")
+               and (always or any(v is not None for v in cols[name]))]
+
     vtkhdf_init_multiblock(f)
     for gi, name in enumerate(names):
         idx = [k for k, g in enumerate(groups) if g == gi]
         sel = lambda col: [col[k] for k in idx]
-        block_fields = [n for n in _BLOCK_FIELDS if n in cols]
         vtkhdf_write_polydata_block(
             f, name, sel(body_ids),
             points=point_array(sel(cols["position"]), 3),
-            point_data={n: column_array(sel(cols[n]), types[n]) for n in block_fields},
-            point_data_attrs={n: {"order": QUATERNION_ORDER} for n in block_fields if types[n] == "quaternion"},
+            point_data={n: column_array(sel(cols[n]), types[n]) for n in written},
+            point_data_attrs={n: {"order": QUATERNION_ORDER} for n in written if types[n] == "quaternion"},
         )
-
-    # 2. /ONDEM/Bodies/<shape group>: body_id (join key) + fields not in the blocks
-    bodies_grp = f.require_group("ONDEM/Bodies")
-    shape_groups = [_shape_group(b) for b in bodies]
-    for sg in sorted(set(shape_groups)):
-        idx = [k for k, s in enumerate(shape_groups) if s == sg]
-        sel = lambda col: [col[k] for k in idx]
-        members = sel(bodies)
-        shape_fields = _SHAPE_FIELDS.get(sg, [])
-        shape_cols = _collect(members, shape_fields)
-        g = bodies_grp.create_group(sg)
-        g.attrs["count"] = len(idx)
-        hdf5_write_column(g, "body_id", sel(body_ids), "scalar_int")
-        for name, h, mandatory, _get in _BODY_FIELDS + shape_fields:
-            if name in _NOT_IN_ONDEM or name == "body_id":
-                continue
-            vals = sel(cols[name]) if name in cols else shape_cols[name]
-            if not mandatory and all(v is None for v in vals):
-                continue
-            hdf5_write_column(g, name, vals, h)
-        if sg == "other":
-            hdf5_write_string_array(g, "shape_type", [_shape_type(b) for b in members])
-            g.attrs["note"] = "shape type not supported by the ON-DEM schema yet"
 
     return len(bodies)
 
