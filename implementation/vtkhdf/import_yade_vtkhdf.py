@@ -36,9 +36,10 @@ File layout expected (written by the exporter):
 
 Quaternion convention
 ---------------------
-YADE stores q as (w, x, y, z) — q[0] = w.
-The exporter writes  [x, y, z, w]  (see _quat() in the exporter).
-This importer reverses that:  stored [x,y,z,w] → Quaternion(w, x, y, z).
+The file stores [x, y, z, w] (dataset attribute order = "xyzw").
+YADE (minieigen) indexes a quaternion as q[0..3] = (x, y, z, w), but its
+constructor takes Quaternion(w, x, y, z).
+This importer therefore builds:  stored [x,y,z,w] → Quaternion(w, x, y, z).
 
 Usage
 -----

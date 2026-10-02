@@ -114,8 +114,8 @@ def _vec3(v):
     return np.array([v[0], v[1], v[2]], dtype=np.float64)
 
 def _quat(q):
-    """YADE: q[0]=w → store as [x,y,z,w]"""
-    return np.array([q[1], q[2], q[3], q[0]], dtype=np.float64)
+    """YADE (minieigen) indexes quaternions as q[0..3] = (x, y, z, w), the file order."""
+    return np.array([q[0], q[1], q[2], q[3]], dtype=np.float64)
 
 def _mat3_flat(iv):
     """YADE inertia is a Vector3 of principal moments → diagonal 3x3, row-major."""
@@ -572,7 +572,7 @@ def _gen_nonsphere_exporter(mapping: dict) -> str:
         "        bg.create_dataset('material_id', data=np.array([b.material.id for b in boxes], dtype=np.int32))",
         "        bg.create_dataset('dimensions',  data=np.array([[b.shape.extents[0]*2,b.shape.extents[1]*2,b.shape.extents[2]*2] for b in boxes], dtype=np.float64))",
         "        bg.create_dataset('position',    data=np.array([[b.state.pos[0],b.state.pos[1],b.state.pos[2]] for b in boxes], dtype=np.float64))",
-        "        bg.create_dataset('orientation', data=np.array([[b.state.ori[1],b.state.ori[2],b.state.ori[3],b.state.ori[0]] for b in boxes], dtype=np.float64))",
+        "        bg.create_dataset('orientation', data=np.array([[b.state.ori[0],b.state.ori[1],b.state.ori[2],b.state.ori[3]] for b in boxes], dtype=np.float64))",
         "        bg.attrs['shape_type'] = 'box'",
         "        bg.attrs['count'] = len(boxes)",
         "",
