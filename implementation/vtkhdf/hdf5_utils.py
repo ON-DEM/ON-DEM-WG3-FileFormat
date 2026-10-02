@@ -230,7 +230,7 @@ def _write_ascii_attr(obj, name: str, text: str):
 
 def _write_cells(block, section: str, connectivity, offsets):
     """Write one PolyData cell section (Vertices, Lines, Polygons, Strips)."""
-    g = block.create_group(section)
+    g = block.create_group(section, track_order=True)
     connectivity = np.asarray(connectivity, dtype=np.int64)
     offsets = np.asarray(offsets, dtype=np.int64)
     g.create_dataset("NumberOfCells",           data=np.array([len(offsets) - 1], dtype=np.int64))
@@ -334,8 +334,12 @@ def validate_display_groups(names, groups: dict):
 
 
 def vtkhdf_init_multiblock(f):
-    """Create /VTKHDF as a MultiBlockDataSet with an empty, creation-ordered Assembly."""
-    vtk = f.require_group("VTKHDF")
+    """Create /VTKHDF as a MultiBlockDataSet with an empty, creation-ordered Assembly.
+
+    VTK's reader iterates the groups under /VTKHDF by creation order, so every
+    group it reads is created with track_order=True.
+    """
+    vtk = f.create_group("VTKHDF", track_order=True)
     _write_ascii_attr(vtk, "Type", "MultiBlockDataSet")
     vtk.attrs.create("Version", data=np.array(VTKHDF_VERSION, dtype=np.int64))
     vtk.create_group("Assembly", track_order=True)
@@ -370,8 +374,9 @@ def vtkhdf_write_polydata_block(f, name: str, body_ids, points, point_data: dict
     if len(body_ids) != n:
         raise ValueError(f"block {name!r}: {len(body_ids)} body ids for {n} points")
 
-    blk = f["VTKHDF"].create_group(name)
+    blk = f["VTKHDF"].create_group(name, track_order=True)
     _write_ascii_attr(blk, "Type", "PolyData")
+    blk.attrs.create("Version", data=np.array(VTKHDF_VERSION, dtype=np.int64))
     blk.create_dataset("NumberOfPoints", data=np.array([n], dtype=np.int64))
     blk.create_dataset("Points", data=points)
 
@@ -380,7 +385,7 @@ def vtkhdf_write_polydata_block(f, name: str, body_ids, points, point_data: dict
     for section in ("Lines", "Polygons", "Strips"):
         _write_cells(blk, section, [], [0])
 
-    pd = blk.create_group("PointData")
+    pd = blk.create_group("PointData", track_order=True)
     pd.create_dataset("body_id", data=body_ids)
     for field_name, values in (point_data or {}).items():
         arr = np.asarray(values)

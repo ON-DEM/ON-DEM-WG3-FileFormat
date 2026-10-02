@@ -60,6 +60,9 @@ def check_structure(path):
             link = vtk["Assembly"].get(name, getlink=True)
             assert isinstance(link, h5py.SoftLink) and link.path == f"/VTKHDF/{name}", link
 
+        for name in NAMES:   # VTK's reader needs Version on every block
+            assert tuple(vtk[name].attrs["Version"]) == VTKHDF_VERSION, name
+
         p = vtk["particles"]
         assert p.attrs["Type"] == b"PolyData"
         assert p["Points"].dtype == np.float64 and p["Points"].shape == (3, 3)
