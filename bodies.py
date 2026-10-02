@@ -16,6 +16,8 @@ class base_state:
     """**[mandatory]** tensor of inertia [$M L^{2}$]"""
     volume: float = None
     """**[mandatory]** volume [$L^{3}$]"""
+    blocked_dofs: int = 0
+    """*[optional]* blocked degrees of freedom, as a bitmask: bits 0 to 2 are the translations along x, y, z, bits 3 to 5 the rotations about x, y, z (global frame). A set bit means the degree of freedom is blocked. 0 is free, 63 is fully fixed. Default 0 [$-$]"""
 
 class thermal(base_state):
     """mechanical + thermal state"""
@@ -47,13 +49,16 @@ class polyhedron(base_shape):
     vertices: list = []
     """**[mandatory]** list of positions of the vertices"""
 
+class clump(base_shape):
+    """rigid aggregate of member bodies. The members are the bodies whose ``clump_id`` is the ``body_id`` of the clump body; each member stores its pose relative to the clump body in ``clump_relative_position`` and ``clump_relative_orientation``. The clump body carries the mass, inertia and state of the aggregate; its own ``clump_id`` is -1"""
+
 
 class base_body:
     """class defining a body"""
     material_id: int = -1
     """**[mandatory]** material id [$-$]"""
     clump_id: int = -1
-    """**[mandatory]** clump id [$-$]"""
+    """**[mandatory]** ``body_id`` of the clump body this body is a member of; -1 if the body is not a clump member (also for the clump body itself) [$-$]"""
     body_id: int = None
     """**[mandatory]** body id [$-$]"""
     body_state: type(base_state) = base_state()
@@ -62,6 +67,12 @@ class base_body:
     """**[mandatory]** body shape [$-$]"""
     display_group: int = 0
     """*[optional]* display group of the body: index into ``scene.display_group_names``. It selects the VTKHDF block in which the body is shown. Only relevant for visualisation, no effect on the mechanics. Default 0, so a file without display groups puts every body in the single default group [$-$]"""
+    shape_type: int = None
+    """**[mandatory]** shape of the body: index into ``scene.shape_names``. Readers map shapes by name through that list, never by a fixed index [$-$]"""
+    clump_relative_position: Vector3 = None
+    """*[optional]* for a clump member: its position in the frame of its clump body (relative to the clump body's position, in the clump body's axes). Not defined (NaN in the file) for bodies that are not clump members [$L$]"""
+    clump_relative_orientation: Quaternion = None
+    """*[optional]* for a clump member: its orientation relative to its clump body, $q_\\mathrm{member} = q_\\mathrm{clump} \\, q_\\mathrm{relative}$, components $(w, x, y, z)$. Not defined (NaN in the file) for bodies that are not clump members [$-$]"""
 
 
 #class body(SomeStateClass,SomeShapeClass,SomeMaterialClass):

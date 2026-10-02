@@ -103,12 +103,14 @@ def _export_scene(f):
     #  time: float [T]
     hdf5_write_field(grp, "time", "scalar_float", O.time + (float(O.tags['ondem_time_offset']) if 'ondem_time_offset' in O.tags.keys() else 0.0), scalar_as_dataset=False)
 
+    # UNMAPPED: iteration (int)
     #  gravity: Vector3 [L/T²]
     hdf5_write_field(grp, "gravity", "vector3", _get_gravity(), scalar_as_dataset=False)
 
     # [optional] display_group_names: List[str] [$-$]
     hdf5_write_field(grp, "display_group_names", "string_list", _display_group_names(), scalar_as_dataset=False)
 
+    # UNMAPPED: shape_names (List[str])
     # not in the schema yet (provisional, mapping _extra_scene_fields)
     hdf5_write_field(grp, "iteration", "scalar_int", O.iter + (int(O.tags['ondem_iteration_offset']) if 'ondem_iteration_offset' in O.tags.keys() else 0), scalar_as_dataset=False)
 
@@ -178,6 +180,9 @@ _BODY_FIELDS = [
     ("body_id", "scalar_int", True, lambda b: b.id),
     # SKIPPED base_body.body_state: nested type type(base_state)
     # SKIPPED base_body.body_shape: nested type type(base_shape)
+    # UNMAPPED base_body.shape_type
+    # UNMAPPED base_body.clump_relative_position
+    # UNMAPPED base_body.clump_relative_orientation
     # [mandatory] base_state.position: Vector3 [$L$]
     ("position", "vector3", True, lambda b: b.state.pos),
     # [mandatory] base_state.velocity: Vector3 [$L T^{-1}$]
@@ -192,6 +197,7 @@ _BODY_FIELDS = [
     ("inertia", "matrix3", True, lambda b: _diag3(b.state.inertia)),
     # [mandatory] base_state.volume: float [$L^{3}$]
     ("volume", "scalar_float", True, lambda b: _sphere_volume(b)),
+    # UNMAPPED base_state.blocked_dofs
     # [optional] thermal.temperature: float [$\Theta$]
     ("temperature", "scalar_float", False, lambda b: b.state.T),
     # [optional] liquid_film.liquid_film_volume: float [L^3]
