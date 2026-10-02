@@ -62,6 +62,12 @@ for z in zs:
 
 print(f"Bodies added: {len(O.bodies)} ({len(O.bodies)-5} spheres, 5 walls)")
 
+# a flat fixed box under the corner sphere at (0.025, 0.025), rotated 10 deg about z,
+# top face flush with the floor (z = 0): the sphere rests on floor and box (box-sphere contact)
+BOX_ID = O.bodies.append(utils.box((0.025, 0.025, -0.002), (0.006, 0.006, 0.002),
+                                   orientation=Quaternion((0, 0, 1), math.radians(10)),
+                                   fixed=True, material=wall_mat))
+
 # non-trivial orientations, to check the quaternion convention
 O.bodies[5].state.ori = Quaternion((1, 2, 3), 0.7)          # a sphere: keeps rotating
 O.bodies[0].state.ori = Quaternion((0, 0, 1), math.pi / 2)  # the floor wall is fixed: stays exact
@@ -75,9 +81,9 @@ O.bodies[9].state.isDamped = False
 def set_engines():
     O.engines = [
         ForceResetter(),
-        InsertionSortCollider([Bo1_Sphere_Aabb(), Bo1_Wall_Aabb()]),
+        InsertionSortCollider([Bo1_Sphere_Aabb(), Bo1_Wall_Aabb(), Bo1_Box_Aabb()]),
         InteractionLoop(
-            [Ig2_Sphere_Sphere_ScGeom(), Ig2_Wall_Sphere_ScGeom()],
+            [Ig2_Sphere_Sphere_ScGeom(), Ig2_Wall_Sphere_ScGeom(), Ig2_Box_Sphere_ScGeom()],
             [Ip2_FrictMat_FrictMat_FrictPhys()],
             [Law2_ScGeom_FrictPhys_CundallStrack()]
         ),
@@ -109,6 +115,7 @@ for b in O.bodies:
         ori=np.array([b.state.ori[k] for k in range(4)]), mass=b.state.mass,
         radius=b.shape.radius if isinstance(b.shape, Sphere) else None,
         wall=(b.shape.axis, b.shape.sense) if isinstance(b.shape, Wall) else None,
+        box=tuple(b.shape.extents) if isinstance(b.shape, Box) else None,
         mat=dict(density=b.material.density, young=b.material.young, poisson=b.material.poisson,
                  frictionAngle=b.material.frictionAngle, label=b.material.label),
         group=group_of(b),
@@ -183,6 +190,7 @@ with h5py.File(out, "r") as f:
     pairs_file = sorted((int(a), int(b)) for t in ig for a, b in zip(ig[t]["id1"][:], ig[t]["id2"][:]))
     pairs_yade = sorted((i.id1, i.id2) for i in real_intrs)
     check(pairs_file == pairs_yade, "interaction pairs id1/id2 match the scene")
+    check(any(BOX_ID in p for p in pairs_file), "a box-sphere contact exists (box contacts are covered)")
 
 # ---- Restart: import into a reset scene ----
 print("Restarting from the file ...")
@@ -217,6 +225,9 @@ for bid, st in before.items():
         check(b.state.mass == st["mass"], f"body {bid}: mass")
     if st["wall"] is not None:
         check((b.shape.axis, b.shape.sense) == st["wall"], f"body {bid}: wall axis/sense")
+    if st["box"] is not None:
+        check(isinstance(b.shape, Box) and tuple(b.shape.extents) == st["box"], f"body {bid}: box extents")
+        check(b.state.mass == st["mass"], f"body {bid}: box mass")
 
 # ---- The restarted scene runs ----
 O.dt = 1e-5

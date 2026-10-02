@@ -14,12 +14,13 @@ Restored:
   - Materials       (FrictMat from /ONDEM/Materials/)
   - Spheres         (blocks + /ONDEM/Bodies/sphere/)
   - Walls           (blocks + /ONDEM/Bodies/wall/)
+  - Boxes           (blocks + /ONDEM/Bodies/box/)
   - Contacts        (/ONDEM/Interactions/: every real contact is rebuilt with
                      utils.createInteraction and gets its stored history:
                      normal, shear force, stiffnesses, friction)
   - Display groups  (returned, so they can be passed back to export_vtkhdf)
 Refused (ValueError, nothing is created):
-  - Shapes other than spheres and walls, clumps.
+  - Shapes other than spheres, walls and boxes; clumps.
   - Contact types other than (ScGeom, FrictPhys).
 
 File layout expected (written by the exporter):
@@ -290,7 +291,19 @@ def _make_wall(rec, yade_mat):
     return b
 
 
-_MAKERS = {"sphere": _make_sphere, "wall": _make_wall}
+def _make_box(rec, yade_mat):
+    d = rec["dimensions"]                   # full edge lengths; YADE takes half extents
+    b = utils.box(center=_v3(rec["position"]),
+                  extents=Vector3(float(d[0]) / 2, float(d[1]) / 2, float(d[2]) / 2),
+                  material=yade_mat)
+    _set_state(b, rec)
+    b.state.mass = float(rec["mass"])
+    I = rec["inertia"]
+    b.state.inertia = Vector3(float(I[0]), float(I[4]), float(I[8]))
+    return b
+
+
+_MAKERS = {"sphere": _make_sphere, "wall": _make_wall, "box": _make_box}
 
 
 def _restore_frict(i, rec):
@@ -376,6 +389,7 @@ def import_vtkhdf(filename,
     dict with keys:
         'sphere_ids'          – YADE body ids of the restored spheres
         'wall_ids'            – YADE body ids of the restored walls
+        'box_ids'             – YADE body ids of the restored boxes
         'interaction_count'   – number of contacts rebuilt with their history
         'id_map'              – {stored body_id -> YADE body id}
         'mat_id_map'          – {stored material id -> O.materials index}
@@ -411,7 +425,7 @@ def import_vtkhdf(filename,
         mat_id_map[mid] = O.materials.append(FrictMat(**kw))
         print(f"[import] Material id={mid} → O.materials[{mat_id_map[mid]}]  label='{kw['label']}'")
 
-    sphere_ids, wall_ids = [], []
+    sphere_ids, wall_ids, box_ids = [], [], []
     id_map, display_group = {}, {}
     for bid in sorted(bodies):
         rec = bodies[bid]
@@ -421,7 +435,7 @@ def import_vtkhdf(filename,
         new_id = O.bodies.append(b)
         id_map[bid] = new_id
         display_group[new_id] = rec["display_group"]
-        (sphere_ids if sg == "sphere" else wall_ids).append(new_id)
+        {"sphere": sphere_ids, "wall": wall_ids, "box": box_ids}[sg].append(new_id)
 
     _restore_interactions(interactions, id_map)
 
@@ -429,13 +443,14 @@ def import_vtkhdf(filename,
     if moved:
         print(f"[import] Note: {len(moved)} body id(s) changed (scene not empty or ids not contiguous); see 'id_map'.")
 
-    print(f"[import] Done. {len(sphere_ids)} sphere(s), {len(wall_ids)} wall(s) "
+    print(f"[import] Done. {len(sphere_ids)} sphere(s), {len(wall_ids)} wall(s), {len(box_ids)} box(es) "
           f"in {len(names)} display group(s) {names}, {len(interactions)} contact(s) with history "
           f"→ {len(O.bodies)} total bodies in scene.")
 
     return {
         "sphere_ids"          : sphere_ids,
         "wall_ids"            : wall_ids,
+        "box_ids"             : box_ids,
         "interaction_count"   : len(interactions),
         "id_map"              : id_map,
         "mat_id_map"          : mat_id_map,
@@ -449,8 +464,8 @@ def import_vtkhdf(filename,
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    from yade import (ForceResetter, InsertionSortCollider, Bo1_Sphere_Aabb, Bo1_Wall_Aabb,
-                      InteractionLoop, Ig2_Sphere_Sphere_ScGeom, Ig2_Wall_Sphere_ScGeom,
+    from yade import (ForceResetter, InsertionSortCollider, Bo1_Sphere_Aabb, Bo1_Wall_Aabb, Bo1_Box_Aabb,
+                      InteractionLoop, Ig2_Sphere_Sphere_ScGeom, Ig2_Wall_Sphere_ScGeom, Ig2_Box_Sphere_ScGeom,
                       Ip2_FrictMat_FrictMat_FrictPhys, Law2_ScGeom_FrictPhys_CundallStrack,
                       NewtonIntegrator)
 
@@ -467,9 +482,9 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------ #
     O.engines = [
         ForceResetter(),
-        InsertionSortCollider([Bo1_Sphere_Aabb(), Bo1_Wall_Aabb()]),
+        InsertionSortCollider([Bo1_Sphere_Aabb(), Bo1_Wall_Aabb(), Bo1_Box_Aabb()]),
         InteractionLoop(
-            [Ig2_Sphere_Sphere_ScGeom(), Ig2_Wall_Sphere_ScGeom()],
+            [Ig2_Sphere_Sphere_ScGeom(), Ig2_Wall_Sphere_ScGeom(), Ig2_Box_Sphere_ScGeom()],
             [Ip2_FrictMat_FrictMat_FrictPhys()],
             [Law2_ScGeom_FrictPhys_CundallStrack()],
         ),
