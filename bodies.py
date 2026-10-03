@@ -66,7 +66,7 @@ class base_body:
     body_shape: type(base_shape) = base_shape()
     """**[mandatory]** body shape [$-$]"""
     display_group: int = 0
-    """*[optional]* display group of the body: index into ``scene.display_group_names``. It selects the VTKHDF block in which the body is shown. Only relevant for visualisation, no effect on the mechanics. Default 0, so a file without display groups puts every body in the single default group [$-$]"""
+    """*[optional]* display group of the body: index into ``scene.display_group_names``. It selects the VTKHDF block in which the body is shown. Only relevant for visualisation, no effect on the mechanics. Default rule, when the user defines no groups: 0 (``Points``) for spheres, 1 (``Others``) for every other shape [$-$]"""
     shape_type: int = None
     """**[mandatory]** shape of the body: index into ``scene.shape_names``. Readers map shapes by name through that list, never by a fixed index [$-$]"""
     clump_relative_position: Vector3 = None

@@ -294,6 +294,29 @@ with h5py.File(out2, "r") as f:
     check(O.iter == 1000, f"O.iter restarted from 0 ({O.iter})")
     print(f"  series continues: iteration {int(sc['iteration'])}, time {float(sc['time']):.6g} (O.iter = {O.iter})")
 
+# ---- Default display groups (decision 18): Points (spheres) and Others ----
+default_out = os.path.join(tempfile.gettempdir(), "test_default_groups.vtkhdf")
+export_vtkhdf(default_out)
+with h5py.File(default_out, "r") as f:
+    check(list(f["VTKHDF/Assembly"]) == ["Points", "Others"], f"default groups {list(f['VTKHDF/Assembly'])}")
+    shape_names = list(f["ONDEM/Scene/shape_names"].asstr()[:])
+    for name, expected in (("Points", {"sphere"}), ("Others", {"wall", "box"})):
+        got = {shape_names[int(t)] for t in f["VTKHDF"][name]["PointData/shape_type"][:]}
+        check(got == expected, f"default group {name}: shapes {got}, expected {expected}")
+    print(f"  default groups: Points {int(f['VTKHDF/Points/NumberOfPoints'][0])} bodies, "
+          f"Others {int(f['VTKHDF/Others/NumberOfPoints'][0])} bodies")
+
+# a group function without names is refused, and no file is written
+no_names = os.path.join(tempfile.gettempdir(), "test_no_names.vtkhdf")
+if os.path.exists(no_names):
+    os.remove(no_names)
+try:
+    export_vtkhdf(no_names, display_group=lambda b: 0)
+    check(False, "display_group without display_group_names must raise")
+except ValueError as e:
+    check("display_group_names" in str(e) and not os.path.exists(no_names), f"refused, no file: {e}")
+    print("  display_group without names refused:", str(e)[:80], "...")
+
 # ---- Periodic scene: the exporter must refuse and write nothing ----
 O.periodic = True
 periodic_out = os.path.join(tempfile.gettempdir(), "test_periodic.vtkhdf")
@@ -304,6 +327,16 @@ except ValueError as e:
     check("periodic" in str(e) and not os.path.exists(periodic_out), f"periodic refused, no file: {e}")
     print("  periodic scene refused:", e)
 O.periodic = False
+
+# ---- Spheres only: the default block Others still exists, empty ----
+O.reset()
+O.bodies.append(utils.sphere((0, 0, 0), 0.012, material=O.materials.append(FrictMat(density=2000))))
+only_spheres = os.path.join(tempfile.gettempdir(), "test_only_spheres.vtkhdf")
+export_vtkhdf(only_spheres)
+with h5py.File(only_spheres, "r") as f:
+    check(list(f["VTKHDF/Assembly"]) == ["Points", "Others"] and int(f["VTKHDF/Others/NumberOfPoints"][0]) == 0
+          and int(f["VTKHDF/Points/NumberOfPoints"][0]) == 1, "spheres only: Points has the sphere, Others exists and is empty")
+    print("  spheres only: Others block present with 0 bodies")
 
 # ---- A material field missing in the file: the importer must fail clearly ----
 import shutil

@@ -108,7 +108,7 @@ def _read_scene(f):
     if "display_group_names" in sc:
         names = [str(n) for n in sc["display_group_names"].asstr()[:]]
     else:
-        names = ["all"]                  # schema default
+        names = ["Points", "Others"]     # schema default (decision 18)
     if "shape_names" not in sc:
         raise ValueError("[import] /ONDEM/Scene has no shape_names: the file was written in the layout "
                          "before 2 October 2026 (bodies in /ONDEM/Bodies), which this importer does not read")
