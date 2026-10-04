@@ -85,7 +85,7 @@ from yade import O, utils, Vector3, Quaternion, FrictMat
 
 from hdf5_utils import vtkhdf_read_blocks, ondem_read_interactions, SIMULATION_GROUP
 
-SIM = SIMULATION_GROUP      # top-level simulation group, "ONDEM" until it is renamed
+SIM = SIMULATION_GROUP      # top-level simulation group; its name is defined only in hdf5_utils
 
 
 # ---------------------------------------------------------------------------
