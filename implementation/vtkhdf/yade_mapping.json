@@ -93,6 +93,7 @@
   },
 
   "_material_classes": ["linear_elastic_frictional_3D"],
+  "_material_classes_note": "the inheritance of the material classes will be reworked with the other codes (decision 24)",
 
   "linear_elastic_frictional_3D": {
     "id":               "mat.id",

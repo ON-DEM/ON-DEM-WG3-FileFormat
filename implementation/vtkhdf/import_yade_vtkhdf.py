@@ -120,7 +120,9 @@ def _read_scene(f):
 # Reading and checking the file (nothing is created in the scene here)
 # ---------------------------------------------------------------------------
 
-# FrictMat <-> linear_elastic_frictional_3D (decision 10 of 2 October 2026):
+# FrictMat <-> linear_elastic_frictional_3D (decision 10 of 2 October 2026; provisional
+# again since decision 24: the inheritance of the material classes will be reworked
+# with the other codes):
 #   normal_stiffness = young, shear_stiffness = young * poisson,
 #   shear_friction = tan(frictionAngle), shear_damping = 0 (FrictMat has none).
 # The stiffnesses hold a material stiffness (YADE's Young's modulus), not a

@@ -213,12 +213,12 @@ with h5py.File(out, "r") as f:
         ids = set(int(v) for v in ig[t]["id1"][:]) | set(int(v) for v in ig[t]["id2"][:])
         check(ids <= block_ids, f"interaction ids not in the blocks: {sorted(ids - block_ids)}")
         check(t == t.lower(), f"interaction group name {t!r} is not snake_case")
-    # materials: FrictMat -> linear_elastic_frictional_3D (decision 10)
+    # materials: FrictMat -> linear_elastic_frictional_3D (decision 10, provisional again: decision 24)
     for key, g in f[f"{SIM}/Materials"].items():
         for fld in ("id", "density", "normal_stiffness", "shear_stiffness", "shear_friction", "shear_damping", "yade_poisson"):
             check(fld in g, f"material {key}: field {fld} missing")
         check(g.attrs.get("schema_classes") == "linear_elastic_frictional_3D", f"material {key}: schema_classes attribute")
-        check("provisional" not in g.attrs, f"material {key}: no provisional attribute any more")
+        check("provisional" in g.attrs, f"material {key}: provisional attribute (decision 24)")
         ym = O.materials[int(g["id"][()])]
         check(g["normal_stiffness"][()] == ym.young, f"material {key}: normal_stiffness = young")
         check(g["shear_stiffness"][()] == ym.young * ym.poisson, f"material {key}: shear_stiffness = young * poisson")
