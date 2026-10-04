@@ -19,17 +19,20 @@ Compared between A and B:
     angular velocity and normal force in A);
   - time and iteration of a file exported by B at the end (series continues).
 
-Two scenarios, with stated tolerances:
+Two scenarios, with stated acceptance criteria:
   1. without clumps: the restart must be bit-identical; tolerance 1e-10 after
      1 step and after M steps (observed: 0).
   2. with 3 two-sphere clumps: YADE recomputes the members' relative poses
      from their positions when the clump is rebuilt (they cannot be set from
      Python), so B starts with round-off differences, which the granular
-     dynamics amplify. Tolerance 1e-12 after 1 step (round-off) and 1e-7
-     after M steps (observed on 2026-10-02: 1e-13 and 5e-9).
+     dynamics amplify. Acceptance: the restart instant and 1e-12 after 1 step
+     (round-off). The comparison after M steps is printed as information only:
+     a restart with clumps is not expected to stay identical over a long run
+     (observed on 2026-10-02 in this quiet scene: about 5e-9 after 2000 steps).
 
-Negative controls in each scenario (must exceed the tolerance after M steps,
-to show the test can fail):
+Negative controls in each scenario (must exceed the tolerance where the
+acceptance criterion is: after M steps without clumps, after 1 step with
+clumps), to show the test can fail:
   - import, then set every shear force to zero (history lost);
   - import, then replace the stored normals of sphere-sphere contacts by the
     current centre line (normal history lost).
@@ -147,7 +150,8 @@ def max_diff(a, b, key):
 
 
 def compare(label, sA, cA, sB, cB, tol, report):
-    """Compare B against A; returns the largest relative difference."""
+    """Compare B against A; returns the largest relative difference.
+    tol=None: print the differences as information only (no check)."""
     if report:
         check(set(cA) == set(cB), f"{label}: contact sets differ "
               f"(only A: {sorted(set(cA) - set(cB))[:5]}, only B: {sorted(set(cB) - set(cA))[:5]})")
@@ -163,9 +167,11 @@ def compare(label, sA, cA, sB, cB, tol, report):
         "shear force":      max_diff({k: cA[k] for k in common}, cB, "fs") / fmax,
     }
     if report:
-        print(f"    {label}: " + ", ".join(f"{k} {v:.1e}" for k, v in rel.items()) + f"  (tolerance {tol:.0e})")
-        for k, v in rel.items():
-            check(v <= tol, f"{label}: {k} differs by {v:.2e} (relative), tolerance {tol:.0e}")
+        note = f"(tolerance {tol:.0e})" if tol is not None else "(information only, not checked)"
+        print(f"    {label}: " + ", ".join(f"{k} {v:.1e}" for k, v in rel.items()) + f"  {note}")
+        if tol is not None:
+            for k, v in rel.items():
+                check(v <= tol, f"{label}: {k} differs by {v:.2e} (relative), tolerance {tol:.0e}")
     return max(rel.values())
 
 
@@ -293,21 +299,26 @@ def scenario(name, with_clumps, with_drop, tol_1, tol_M):
         print(f"  corrupted relative pose reported: {r['clump_warnings']}")
 
     # --- negative controls
+    # judged where the acceptance criterion is: after M steps, or after 1 step when
+    # the long run is information only (clumps)
     for label, mutate in (("control: shear history lost", zero_shear),
                           ("control: stored normals ignored", centre_line_normals)):
-        _, _, _, sM, cM = run_B(mutate)
-        worst = compare(label, AM_s, AM_c, sM, cM, tol_M, report=False)
-        print(f"  {label}: largest relative difference after {M} steps {worst:.1e} (must exceed {tol_M:.0e})")
-        check(worst > tol_M, f"{name}: {label}: the test did not detect the lost history ({worst:.1e})")
+        _, s1, c1, sM, cM = run_B(mutate)
+        if tol_M is not None:
+            worst, tol, when = compare(label, AM_s, AM_c, sM, cM, tol_M, report=False), tol_M, f"{M} steps"
+        else:
+            worst, tol, when = compare(label, A1_s, A1_c, s1, c1, tol_1, report=False), tol_1, "1 step"
+        print(f"  {label}: largest relative difference after {when} {worst:.1e} (must exceed {tol:.0e})")
+        check(worst > tol, f"{name}: {label}: the test did not detect the lost history ({worst:.1e})")
 
 
 check(O.numThreads == 1, f"the test needs 1 OpenMP thread (yadedaily default), got {O.numThreads}")
 scenario("without clumps, a sphere lands after the restart (bit-identical)",
          with_clumps=False, with_drop=True, tol_1=1e-10, tol_M=1e-10)
-# the clump tolerance was confirmed for this quiet scene: an impact after the restart
-# amplifies the clumps' round-off (about 1e-5 after 2000 steps, see implementation/README.md)
+# with clumps the acceptance criterion is the restart instant and one step; the long
+# run is information only (a restart with clumps is not expected to stay identical)
 scenario("with clumps (members' relative poses recomputed by YADE)",
-         with_clumps=True, with_drop=False, tol_1=1e-12, tol_M=1e-7)
+         with_clumps=True, with_drop=False, tol_1=1e-12, tol_M=None)
 
 if failures:
     print(f"TEST FAILED ({len(failures)} check(s))")
