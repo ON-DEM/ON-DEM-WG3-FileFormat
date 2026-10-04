@@ -17,7 +17,7 @@ class base_interaction:
 class normal(base_interaction):
     """interaction in the normal direction"""
     normal: Vector3 = Vector3(0,0,0)
-    """**[mandatory]** unit contact normal of the last force evaluation; it is part of the contact history (incremental laws rotate the shear force from it on the next step) [$-$]"""
+    """**[mandatory]** unit contact normal, stored at every timestep [$-$]"""
     normal_force: float = 0
     """**[mandatory]** normal force magnitude (positive in traction) [$F$]"""
 
