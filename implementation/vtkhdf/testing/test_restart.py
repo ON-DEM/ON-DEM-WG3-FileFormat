@@ -52,6 +52,7 @@ import h5py
 from yade import utils, O, Vector3, Quaternion
 from export_yade_vtkhdf import export_vtkhdf
 from import_yade_vtkhdf import import_vtkhdf
+from hdf5_utils import SIMULATION_GROUP as SIM
 
 N_SETTLE, N_TILT, M = 8000, 2000, 2000
 R = 0.012            # sphere radius: reference length
@@ -252,7 +253,7 @@ def scenario(name, with_clumps, with_drop, tol_1, tol_M):
     out_end = os.path.join(tempfile.gettempdir(), "test_restart_end.vtkhdf")
     export_vtkhdf(out_end)
     with h5py.File(out_end, "r") as f:
-        sc = f["ONDEM/Scene"].attrs
+        sc = f[f"{SIM}/Scene"].attrs
         check(int(sc["iteration"]) == A_end_iter, f"{name}: iteration {int(sc['iteration'])} != A's {A_end_iter}")
         check(math.isclose(float(sc["time"]), A_end_time, rel_tol=1e-12), f"{name}: time {float(sc['time'])!r} != A's {A_end_time!r}")
         print(f"  series continues: iteration {int(sc['iteration'])} (A: {A_end_iter}), time {float(sc['time']):.9g} (A: {A_end_time:.9g})")

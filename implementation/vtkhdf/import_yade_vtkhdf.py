@@ -4,20 +4,18 @@ ON-DEM WG3 - VTKHDF to YADE importer
 
 Reads a .vtkhdf file written by export_yade_vtkhdf.py and reconstructs the
 YADE simulation state. Restart reads the whole file: the VTKHDF blocks (body
-positions and the block fields) and /ONDEM (everything else), joined on
-body_id.
+positions and every per-body field) and the simulation group /<SIM> (scene,
+materials, interactions; SIM = hdf5_utils.SIMULATION_GROUP).
 
 Create O.engines before importing: engines cannot come from the file.
 
 Restored:
   - Scene metadata  (dt, gravity; time is only printed, O.time is read-only)
-  - Materials       (FrictMat from /ONDEM/Materials/)
-  - Spheres         (blocks + /ONDEM/Bodies/sphere/)
-  - Walls           (blocks + /ONDEM/Bodies/wall/)
-  - Boxes           (blocks + /ONDEM/Bodies/box/)
+  - Materials       (FrictMat from /<SIM>/Materials/)
+  - Spheres, walls, boxes (blocks)
   - Clumps          (members restored first, then O.bodies.clump; the frame YADE
                      recomputes is checked against the file, see _make_clump)
-  - Contacts        (/ONDEM/Interactions/: every real contact is rebuilt with
+  - Contacts        (/<SIM>/Interactions/: every real contact is rebuilt with
                      utils.createInteraction and gets its stored history:
                      normal, shear force, stiffnesses, friction)
   - Display groups  (returned, so they can be passed back to export_vtkhdf)
@@ -37,7 +35,7 @@ File layout expected (written by the exporter):
         clump_relative_orientation, wall_axis, wall_sense, facet_vertices, ...
         orientation     (N,4)    [w, x, y, z], attribute order = "wxyz"
     Assembly/<group name>        soft link -> /VTKHDF/<group name>
-  /ONDEM/
+  /<SIM>/                        the simulation group, hdf5_utils.SIMULATION_GROUP
     Scene/                       attrs: time, timestep, iteration; datasets:
                                  gravity, units, display_group_names, shape_names
     Materials/<id>/              scalar datasets per material
@@ -85,7 +83,9 @@ except ImportError:
 
 from yade import O, utils, Vector3, Quaternion, FrictMat
 
-from hdf5_utils import vtkhdf_read_blocks, ondem_read_interactions
+from hdf5_utils import vtkhdf_read_blocks, ondem_read_interactions, SIMULATION_GROUP
+
+SIM = SIMULATION_GROUP      # top-level simulation group, "ONDEM" until it is renamed
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +99,8 @@ def _v3(arr):
 
 def _read_scene(f):
     """Return (time, iteration, dt, gravity_Vector3, display_group_names, shape_names)
-    from /ONDEM/Scene. iteration is optional (default 0); shape_names is mandatory."""
-    sc = f["ONDEM/Scene"]
+    from /<SIM>/Scene. iteration is optional (default 0); shape_names is mandatory."""
+    sc = f[f"{SIM}/Scene"]
     time    = float(sc.attrs["time"])
     iteration = int(sc.attrs["iteration"]) if "iteration" in sc.attrs else 0
     dt      = float(sc.attrs["timestep"])
@@ -110,8 +110,8 @@ def _read_scene(f):
     else:
         names = ["Points", "Others"]     # schema default (decision 18)
     if "shape_names" not in sc:
-        raise ValueError("[import] /ONDEM/Scene has no shape_names: the file was written in the layout "
-                         "before 2 October 2026 (bodies in /ONDEM/Bodies), which this importer does not read")
+        raise ValueError(f"[import] /{SIM}/Scene has no shape_names: the file was written in the layout "
+                         f"before 2 October 2026 (bodies in /{SIM}/Bodies), which this importer does not read")
     shape_names = [str(n) for n in sc["shape_names"].asstr()[:]]
     return time, iteration, dt, _v3(grav), names, shape_names
 
@@ -130,7 +130,7 @@ _FRICTMAT_FIELDS = ["id", "density", "normal_stiffness", "shear_stiffness", "she
 
 def _read_materials(f):
     """
-    Read /ONDEM/Materials/<id>/ groups.
+    Read /<SIM>/Materials/<id>/ groups.
     Returns {stored material id: keyword arguments of FrictMat}.
 
     Every field of _FRICTMAT_FIELDS must be present; there are no defaults.
@@ -142,8 +142,8 @@ def _read_materials(f):
     (FrictMat cannot represent it), or an inconsistent yade_poisson.
     """
     out = {}
-    for key, g in f["ONDEM/Materials"].items():
-        where = f"[import] /ONDEM/Materials/{key}"
+    for key, g in f[f"{SIM}/Materials"].items():
+        where = f"[import] /{SIM}/Materials/{key}"
         mtype = g["material_type"][()].decode() if "material_type" in g else None
         if mtype != "FrictMat":
             raise ValueError(f"{where}: material_type {mtype!r} is not supported "
@@ -252,7 +252,7 @@ def _check_file(bodies, materials, interactions):
     no_mat = [bid for bid, rec in bodies.items()
               if rec["shape_group"] != "clump" and int(rec.get("material_id", -1)) not in materials]
     if no_mat:
-        errors.append(f"material_id not found in /ONDEM/Materials: body_id {_short(no_mat)}")
+        errors.append(f"material_id not found in /{SIM}/Materials: body_id {_short(no_mat)}")
 
     bad_types, bad_ids, missing, virtual = {}, [], {}, 0
     for rec in interactions:
@@ -551,7 +551,7 @@ def import_vtkhdf(filename,
                                  read O.time or O.iter still see them from zero.
     restore_dt           : bool  Set O.dt from the file (default True).
     restore_gravity      : bool  Set gravity on the NewtonIntegrator (default True).
-    restore_interactions : bool  Rebuild every contact of /ONDEM/Interactions with its
+    restore_interactions : bool  Rebuild every contact of /<SIM>/Interactions with its
                                  stored history (default True). False: contacts are
                                  rebuilt by the collider on the first step, without history.
 

@@ -10,6 +10,12 @@ import numpy as np
 import h5py
 
 
+# Name of the top-level group that holds the simulation data next to /VTKHDF
+# (scene, materials, interactions). It will be renamed (decision 19, name not
+# decided yet): every reader and writer takes the name from this constant.
+SIMULATION_GROUP = "ONDEM"
+
+
 # Component order of quaternions in the file: (w, x, y, z), scalar first,
 # identity (1, 0, 0, 0), v_global = q v_body q^-1 (decided on 2 October 2026).
 # Written as the "order" attribute of every quaternion dataset.
@@ -438,16 +444,16 @@ def vtkhdf_read_blocks(f, names=None) -> dict:
 
 
 def ondem_read_interactions(f) -> list:
-    """Read /ONDEM/Interactions/<type>/, one record per interaction, in file order.
+    """Read /<SIMULATION_GROUP>/Interactions/<type>/, one record per interaction, in file order.
 
     Returns a list of {"type_group": name, <field>: value} with every dataset
     whose first dimension is the group's number of interactions. Strings are
     decoded.
     """
     out = []
-    if "ONDEM/Interactions" not in f:
+    if f"{SIMULATION_GROUP}/Interactions" not in f:
         return out
-    for t, g in f["ONDEM/Interactions"].items():
+    for t, g in f[f"{SIMULATION_GROUP}/Interactions"].items():
         n = len(g["id1"])
         fields = {}
         for k, ds in g.items():

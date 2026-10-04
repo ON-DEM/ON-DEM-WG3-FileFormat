@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 
 from export_yade_vtkhdf import export_vtkhdf
 from import_yade_vtkhdf import import_vtkhdf
+from hdf5_utils import SIMULATION_GROUP as SIM
 import math, tempfile
 from yade import Quaternion
 import numpy as np
@@ -140,7 +141,7 @@ def rotate(q, v):
 print("Checking the file ...")
 with h5py.File(out, "r") as f:
     check(list(f["VTKHDF/Assembly"]) == NAMES, f"Assembly links {list(f['VTKHDF/Assembly'])}")
-    check(list(f["ONDEM/Scene/display_group_names"].asstr()[:]) == NAMES, "display_group_names in /ONDEM/Scene")
+    check(list(f[f"{SIM}/Scene/display_group_names"].asstr()[:]) == NAMES, f"display_group_names in /{SIM}/Scene")
     block_ids = set()
     for name in NAMES:
         blk = f["VTKHDF"][name]
@@ -167,10 +168,10 @@ with h5py.File(out, "r") as f:
         for v in ((1, 0, 0), (0, 1, 0), (0, 0, 1)):
             check(np.allclose(rotate(q, v), np.array(yq * Vector3(*v)), atol=1e-12),
                   f"body {bid}: q v q^-1 differs from YADE's rotation of {v}")
-    # all per-body data in the blocks (decision 12): /ONDEM keeps scene, materials, interactions
-    check(sorted(f["ONDEM"].keys()) == ["Interactions", "Materials", "Scene"],
-          f"/ONDEM holds {sorted(f['ONDEM'].keys())}, expected Interactions, Materials, Scene only")
-    shape_names = list(f["ONDEM/Scene/shape_names"].asstr()[:])
+    # all per-body data in the blocks (decision 12): the simulation group keeps scene, materials, interactions
+    check(sorted(f[SIM].keys()) == ["Interactions", "Materials", "Scene"],
+          f"/{SIM} holds {sorted(f[SIM].keys())}, expected Interactions, Materials, Scene only")
+    shape_names = list(f[f"{SIM}/Scene/shape_names"].asstr()[:])
     print(f"  shape_names: {shape_names}")
     arrays = {name: sorted(f["VTKHDF"][name]["PointData"].keys()) for name in NAMES}
     check(all(a == arrays[NAMES[0]] for a in arrays.values()), f"every block carries the same arrays: {arrays}")
@@ -201,10 +202,10 @@ with h5py.File(out, "r") as f:
                                                                  f["VTKHDF"][name]["PointData/blocked_dofs"][:])}
     check(blocked[7] == 7 and all(blocked[w] == 63 for w in range(5)) and blocked[BOX_ID] == 63,
           f"blocked_dofs: sphere 7 -> 7, walls and box -> 63 ({blocked[7]}, {[blocked[w] for w in range(5)]}, {blocked[BOX_ID]})")
-    check(int(f["ONDEM/Scene"].attrs["iteration"]) == iter_at_export, "scene.iteration")
+    check(int(f[f"{SIM}/Scene"].attrs["iteration"]) == iter_at_export, "scene.iteration")
 
     # interactions: all real ones written, ids found in the blocks
-    ig = f["ONDEM/Interactions"]
+    ig = f[f"{SIM}/Interactions"]
     n_file = sum(int(ig[t].attrs["count"]) for t in ig)
     check(n_real > 0, "the test scene has contacts at export time")
     check(n_file == n_real, f"interactions in file {n_file} != real interactions {n_real}")
@@ -213,7 +214,7 @@ with h5py.File(out, "r") as f:
         check(ids <= block_ids, f"interaction ids not in the blocks: {sorted(ids - block_ids)}")
         check(t == t.lower(), f"interaction group name {t!r} is not snake_case")
     # materials: FrictMat -> linear_elastic_frictional_3D (decision 10)
-    for key, g in f["ONDEM/Materials"].items():
+    for key, g in f[f"{SIM}/Materials"].items():
         for fld in ("id", "density", "normal_stiffness", "shear_stiffness", "shear_friction", "shear_damping", "yade_poisson"):
             check(fld in g, f"material {key}: field {fld} missing")
         check(g.attrs.get("schema_classes") == "linear_elastic_frictional_3D", f"material {key}: schema_classes attribute")
@@ -224,10 +225,10 @@ with h5py.File(out, "r") as f:
         check(g["shear_damping"][()] == 0.0, f"material {key}: shear_damping = 0")
         check(g["yade_poisson"][()] == ym.poisson, f"material {key}: yade_poisson")
         check(math.isclose(g["shear_friction"][()], math.tan(ym.frictionAngle), rel_tol=1e-15), f"material {key}: shear_friction = tan(frictionAngle)")
-    g0 = f["ONDEM/Materials"][str(mat)]
+    g0 = f[f"{SIM}/Materials"][str(mat)]
     check(g0["shear_stiffness"][()] / g0["normal_stiffness"][()] != g0["yade_poisson"][()],
           "test material: the quotient is 1 ulp off, so the test shows that yade_poisson is needed")
-    check(len(f["ONDEM/Materials"]) == 2, f"{len(f['ONDEM/Materials'])} materials in the file, expected 2")
+    check(len(f[f"{SIM}/Materials"]) == 2, f"{len(f[f'{SIM}/Materials'])} materials in the file, expected 2")
     pairs_file = sorted((int(a), int(b)) for t in ig for a, b in zip(ig[t]["id1"][:], ig[t]["id2"][:]))
     pairs_yade = sorted((i.id1, i.id2) for i in real_intrs)
     check(pairs_file == pairs_yade, "interaction pairs id1/id2 match the scene")
@@ -287,7 +288,7 @@ with h5py.File(out2, "r") as f:
         expected = sorted(bid for bid, st in before.items() if NAMES[st["group"]] == name)
         check(ids == expected, f"re-export {name}: body ids")
     # the file series continues through the restart (O.time and O.iter restarted from 0)
-    sc = f["ONDEM/Scene"].attrs
+    sc = f[f"{SIM}/Scene"].attrs
     check(int(sc["iteration"]) == iter_at_export + 1000, f"iteration {int(sc['iteration'])} != {iter_at_export + 1000}")
     check(math.isclose(float(sc["time"]), time_at_export + 1000 * 1e-5, rel_tol=1e-12),
           f"time {float(sc['time'])!r} != {time_at_export + 1000 * 1e-5!r}")
@@ -299,7 +300,7 @@ default_out = os.path.join(tempfile.gettempdir(), "test_default_groups.vtkhdf")
 export_vtkhdf(default_out)
 with h5py.File(default_out, "r") as f:
     check(list(f["VTKHDF/Assembly"]) == ["Points", "Others"], f"default groups {list(f['VTKHDF/Assembly'])}")
-    shape_names = list(f["ONDEM/Scene/shape_names"].asstr()[:])
+    shape_names = list(f[f"{SIM}/Scene/shape_names"].asstr()[:])
     for name, expected in (("Points", {"sphere"}), ("Others", {"wall", "box"})):
         got = {shape_names[int(t)] for t in f["VTKHDF"][name]["PointData/shape_type"][:]}
         check(got == expected, f"default group {name}: shapes {got}, expected {expected}")
@@ -343,7 +344,7 @@ import shutil
 broken = os.path.join(tempfile.gettempdir(), "test_box_spheres_no_young.vtkhdf")
 shutil.copy(out, broken)
 with h5py.File(broken, "a") as f:
-    del f["ONDEM/Materials"][list(f["ONDEM/Materials"])[0]]["normal_stiffness"]
+    del f[f"{SIM}/Materials"][list(f[f"{SIM}/Materials"])[0]]["normal_stiffness"]
 O.reset()
 set_engines()
 try:
@@ -357,7 +358,7 @@ except ValueError as e:
 damped = os.path.join(tempfile.gettempdir(), "test_box_spheres_damped.vtkhdf")
 shutil.copy(out, damped)
 with h5py.File(damped, "a") as f:
-    g = f["ONDEM/Materials"][list(f["ONDEM/Materials"])[0]]
+    g = f[f"{SIM}/Materials"][list(f[f"{SIM}/Materials"])[0]]
     del g["shear_damping"]
     g.create_dataset("shear_damping", data=0.5)
 O.reset()
@@ -382,7 +383,7 @@ except RuntimeError as e:
 unsupported = os.path.join(tempfile.gettempdir(), "test_box_spheres_bad_contact.vtkhdf")
 shutil.copy(out, unsupported)
 with h5py.File(unsupported, "a") as f:
-    g = f["ONDEM/Interactions"][list(f["ONDEM/Interactions"])[0]]
+    g = f[f"{SIM}/Interactions"][list(f[f"{SIM}/Interactions"])[0]]
     del g["phys_type"]
     g.create_dataset("phys_type", data=["MindlinPhys"] * int(g.attrs["count"]), dtype=h5py.string_dtype())
 O.reset()

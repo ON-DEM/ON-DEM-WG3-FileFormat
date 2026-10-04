@@ -30,7 +30,8 @@ import sys
 
 from hdf5_utils import (hdf5_write_field, hdf5_write_column, hdf5_write_string_array,
                         point_array, column_array, snake_case, validate_display_groups,
-                        vtkhdf_init_multiblock, vtkhdf_write_polydata_block, QUATERNION_ORDER)
+                        vtkhdf_init_multiblock, vtkhdf_write_polydata_block, QUATERNION_ORDER,
+                        SIMULATION_GROUP)
 
 
 # ---------------------------------------------------------------------------
@@ -97,8 +98,8 @@ def _collect(items, fields):
 
 
 def _export_scene(f):
-    """Write /ONDEM/Scene — generated from scene schema."""
-    grp = f.require_group("ONDEM/Scene")
+    """Write /<SIMULATION_GROUP>/Scene — generated from scene schema."""
+    grp = f.require_group(f"{SIMULATION_GROUP}/Scene")
 
     #  units: List[str] 
     hdf5_write_field(grp, "units", "string_list", ['second', 'meter', 'kilogram'], scalar_as_dataset=False)
@@ -123,8 +124,8 @@ def _export_scene(f):
 
 
 def _export_materials(f):
-    """Write /ONDEM/Materials — generated from materials schema."""
-    mat_grp = f.require_group("ONDEM/Materials")
+    """Write /<SIMULATION_GROUP>/Materials — generated from materials schema."""
+    mat_grp = f.require_group(f"{SIMULATION_GROUP}/Materials")
     seen_ids = set()
     for b in O.bodies:
         if b is None or b.material is None: continue   # clump bodies have no material
@@ -339,8 +340,8 @@ def _interaction_type(i):
     except Exception: return "unknown"
 
 def _export_interactions(f):
-    """Write /ONDEM/Interactions/<type>/: one group per interaction type (snake_case)."""
-    ig_root = f.require_group("ONDEM/Interactions")
+    """Write /<SIMULATION_GROUP>/Interactions/<type>/: one group per interaction type (snake_case)."""
+    ig_root = f.require_group(f"{SIMULATION_GROUP}/Interactions")
     intrs = [i for i in O.interactions if i.isReal]
     by_type = {}
     for i in intrs:
@@ -406,7 +407,7 @@ def export_vtkhdf(filename, display_group_names=None, display_group=None):
     try:
         with h5py.File(filename, "w") as f:
 
-            # 1. Bodies: /VTKHDF blocks (one per display group) + /ONDEM/Bodies
+            # 1. Bodies: /VTKHDF blocks (one per display group), every per-body field
             n_bodies = _export_bodies(f)
 
             # 2. Scene metadata (includes display_group_names)

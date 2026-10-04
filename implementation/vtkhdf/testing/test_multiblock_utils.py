@@ -20,7 +20,7 @@ import h5py
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from hdf5_utils import (vtkhdf_init_multiblock, vtkhdf_write_polydata_block, vtkhdf_read_blocks,
                         validate_display_groups, point_array, column_array, hdf5_write_quaternion_array,
-                        QUATERNION_ORDER, VTKHDF_VERSION)
+                        QUATERNION_ORDER, VTKHDF_VERSION, SIMULATION_GROUP)
 
 NAMES = ["particles", "geometry", "unused"]          # "unused" stays empty
 BODIES = {                                            # body_id: (group, position, radius)
@@ -140,7 +140,7 @@ def check_not_applicable():
 
 def check_quaternion_helper(path):
     with h5py.File(path, "a") as f:
-        g = f.require_group("ONDEM/test")
+        g = f.require_group(f"{SIMULATION_GROUP}/test")
         hdf5_write_quaternion_array(g, "q", [(0.9, 0.1, 0.2, 0.3), None])
         assert QUATERNION_ORDER == "wxyz"
         assert g["q"].attrs["order"] == QUATERNION_ORDER
