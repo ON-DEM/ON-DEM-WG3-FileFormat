@@ -109,15 +109,15 @@ def check_validation():
             return str(e)
         raise AssertionError(f"no ValueError for names={names} groups={groups}")
 
-    assert "body_id 7" in raises(["all"], {7: 1})
+    assert "body_id 7" in raises(["Points", "Others"], {7: 2})
     assert "body_id 7" in raises(["a", "b"], {7: -1})
     assert "unique" in raises(["a", "a"], {})
     raises(["Assembly"], {})
     raises(["a/b"], {})
     raises([""], {})
     raises([], {})
-    raises(["all"], {3: 0.0})
-    validate_display_groups(["all"], {0: 0, 1: np.int64(0)})
+    raises(["Points", "Others"], {3: 0.0})
+    validate_display_groups(["Points", "Others"], {0: 0, 1: np.int64(1)})
     print("  validate_display_groups: OK")
 
 

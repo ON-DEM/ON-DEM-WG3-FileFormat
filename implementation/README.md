@@ -10,7 +10,7 @@ One file holds one timestep and everything needed to restart from it. The same f
 
 ### File layout
 
-A file has two top-level groups. `/VTKHDF` is the part ParaView reads (the name is mandatory; ParaView ignores everything else). It holds every per-body field. `/ONDEM` holds the scene, the materials and the interactions.
+A file has two top-level groups. `/VTKHDF` is the part ParaView reads (the name is mandatory; ParaView ignores everything else). It holds every per-body field. The simulation group `/ONDEM` holds the scene, the materials and the interactions. It will be renamed (decision 19, name not decided yet); the code takes the name from one constant, `hdf5_utils.SIMULATION_GROUP`, so readers and writers change in one place.
 
 ```
 /VTKHDF                          Type = "MultiBlockDataSet", Version = (2, 5)
@@ -26,7 +26,7 @@ A file has two top-level groups. `/VTKHDF` is the part ParaView reads (the name 
       ...
   Assembly/
     <group name>  -> /VTKHDF/<group name>   (HDF5 soft link)
-/ONDEM
+/ONDEM                           the simulation group (hdf5_utils.SIMULATION_GROUP)
   Scene/                         attributes: time, timestep, iteration
                                  datasets: gravity, units, display_group_names, shape_names
   Materials/<material id>/       one group per material, one scalar dataset per field
@@ -38,7 +38,9 @@ A file has two top-level groups. `/VTKHDF` is the part ParaView reads (the name 
 Rules:
 
 - **One block per display group.** Every name in `scene.display_group_names` gets a block, also when no body is in that group, so the block tree is the same in every file of a series. Blocks are plain groups directly under `/VTKHDF`; the soft links in `/VTKHDF/Assembly` give the order and the names shown in ParaView. Groups under `/VTKHDF` are created with creation-order tracking, which VTK's reader needs.
-- **Display groups.** `base_body.display_group` (optional, default 0) is an index into `scene.display_group_names` (default `['all']`). It is not written as a dataset: a body's display group is the index of the name of the block it is in. Display groups are only relevant for visualisation.
+- **Display groups.** `base_body.display_group` is an index into `scene.display_group_names`. It is not written as a dataset: a body's display group is the index of the name of the block it is in. Display groups are only relevant for visualisation.
+  - **Default** (decision 18), when the user defines no groups: two groups `['Points', 'Others']`; spheres go to `Points` (bodies shown as points), every other shape to `Others`. Both blocks always exist, also when empty.
+  - User-defined groups: `export_vtkhdf(..., display_group_names=[...], display_group=...)`. Names without `display_group` put every body in the first group. `display_group` without names is refused with an error: user-defined groups are never labelled `Points` / `Others`.
 - **All per-body data in the blocks** (decision of 2 October 2026). Every block carries the same arrays, also an empty block (0 rows). A field is written when it applies to every body or when at least one body has a value. Where a field does not apply to a body, floats are **NaN** and integers (and booleans) are **−1**: for example, the `radius` of a wall, or the `wall_axis` of a sphere.
 - **Geometry is stored once.** Body positions are only the block `Points`, in float64.
 - **Shapes by name.** `shape_type` is an index into `scene.shape_names`. **Readers must map shapes by name from the file's `shape_names`, never by a fixed index**, because the list will change with the shapes proposal (planes, facets, meshes). The YADE exporter writes the list `sphere, box, polyhedron, clump, wall, facet, other`; `other` marks a shape the format does not support yet.
@@ -71,9 +73,9 @@ Rules:
 
 `polyhedron.vertices` is not written: its length differs per body, which is part of the shapes proposal.
 
-### Materials
+### Materials (provisional)
 
-`/ONDEM/Materials/<id>/` holds one scalar dataset per field, named as in the schema; the attribute `schema_classes` names the schema class. YADE's `FrictMat` is written as `linear_elastic_frictional_3D` (decided on 2 October 2026):
+`/ONDEM/Materials/<id>/` holds one scalar dataset per field, named as in the schema; the attribute `schema_classes` names the schema class. YADE's `FrictMat` is written as `linear_elastic_frictional_3D` (decision 10). **This mapping is provisional again** (decision 24): the inheritance of some material classes will be reworked with the other codes, so each material group carries the attribute `provisional`.
 
 | Schema field | YADE `FrictMat` |
 |---|---|
@@ -110,13 +112,13 @@ The importer reads and checks the whole file before it creates anything. An unsu
 
 Contact types that can be restored: `(ScGeom, FrictPhys)`, as used for example by `Law2_ScGeom_FrictPhys_CundallStrack`. Other types raise an error. If the engines create another contact type than the one in the file, the importer stops with an error that says the engines differ.
 
-The stored contact **normal is history** (decided on 2 October 2026: the contact normal of the last force evaluation). On each step the shear force is rotated from the previous normal to the new one, so the importer writes the stored normal back after creating the contact. Without that, the shear force is off by about 1e-6 relative after one step. With it, a restart without clumps continues **bit-identically**, also for a contact that forms after the restart (`test_restart.py`: difference 0 after 1 and after 2000 steps).
+**Contact normal.** The format stores a contact normal at every timestep (decision 23; the specification does not say which force evaluation it belongs to). *YADE implementation note:* YADE's incremental shear law rotates the shear force from the previous normal to the new one on each step, so the importer writes the stored normal back after creating the contact. Without that, the shear force is off by about 1e-6 relative after one step. With it, a restart without clumps continues **bit-identically**, also for a contact that forms after the restart (`test_restart.py`: difference 0 after 1 and after 2000 steps).
 
 **Clumps.** YADE recomputes a clump's frame (centre of mass, principal axes) and its members' relative positions and orientations from the members' poses when the clump is built; the relative poses cannot be set from Python. The importer keeps the recomputed frame, so members and clump stay consistent, and checks it against the file:
 - the centre of mass must agree, and the stored inertia, rotated into the new frame, must be diagonal there (otherwise an error);
 - each member's stored relative pose, mapped into the new frame, is compared with the one YADE recomputed. A difference beyond round-off (1e-10 of the clump size, or 1e-10 rad) is a **warning** naming clump and member, returned in `r["clump_warnings"]`; the clump is still built.
 
-Mass, inertia, velocities and angular momentum come from the file. A restart with clumps therefore starts with round-off differences, about 1e-13 relative after one step, which the granular dynamics amplify. In `test_restart.py` (a quiet packing) they reach about 5e-9 after 2000 steps; the confirmed tolerance is 1e-12 after one step and 1e-7 after 2000 steps. With an impact on a clump after the restart, they grew to about 1e-5 in a trial run. The tolerance holds for the quiet scene of the test, not for every scene.
+Mass, inertia, velocities and angular momentum come from the file. A restart with clumps therefore starts with round-off differences, about 1e-13 relative after one step, which the granular dynamics amplify. **A restart with clumps is not expected to stay identical over a long run.** The acceptance criterion in `test_restart.py` is the restart instant (contacts and restored values exact) and one step (1e-12). The 2000-step comparison of the quiet test packing is printed as information only: about 5e-9 there, and about 1e-5 in a trial run where a sphere hit a clump after the restart.
 
 **Time and iteration.** `O.time` and `O.iter` cannot be set in YADE. The importer stores the offsets (file value minus current value) in `O.tags["ondem_time_offset"]` and `O.tags["ondem_iteration_offset"]`, and the exporter adds them, so the file series continues across a restart (`scene.time`, `scene.iteration`). **Engines that depend on `O.time` or `O.iter` see them start again from zero after a restart**, even though the file series stays continuous: PyRunner `iterPeriod`/`virtPeriod`, time-dependent boundary motion, recorders, anything else that reads `O.time` or `O.iter`. Scripts have to add the offsets themselves (`r["time_offset"]`, `r["iteration_offset"]`).
 
@@ -137,15 +139,14 @@ These do not come from the file. The script must set them up the same way as in 
 
 Not decided yet; the provisional fields keep their current names until they are:
 
-1. **Collision mask** (`group_mask`, YADE `groupMask`): which body pairs may interact. In the format, or code-specific?
-2. **Numerical damping per body** (`is_damped`) and **density scaling** (`density_scaling`, −1 = not used): in the format, or code-specific extras?
-3. **Angular momentum** (`angular_momentum`) for aspherical bodies and clumps: stored, or always derived from inertia, orientation and angular velocity?
-4. **Shapes: planes (YADE `Wall`), facets, meshes, polyhedra.** Shape classes and the layout of variable-length data (vertex lists): a written proposal is being prepared for review before any code.
-5. **Contact geometry**: should `contact_point`, `overlap` and the reference radii become schema fields? Should `frictional_dissipation` and energy totals be part of the format?
-6. **Periodic cell**: where `imposed_conditions.periodic_box` goes in the file.
-7. **Material stiffness units and `shear_damping`** (see "Materials"): to discuss with the other codes.
+1. **Name of the simulation group** (now `ONDEM`; something like "Open Format DEM" or "Simulation").
+2. **Shapes: planes (YADE `Wall`), facets, meshes, polyhedra**, with two kinds of files (restart files with full data; light files that link to a reference restart file for the complex geometries, decision 20). A written design proposal is under review before any code.
+3. **Contacts in ParaView** (decision 21): a VTKHDF block linked to the interaction data; which points the lines use, and one block or one per interaction type.
+4. **Material classes** (decision 24): the inheritance to be made consistent across codes; with it, the dimension of `normal_stiffness` / `shear_stiffness` and removing `shear_damping` from `frictional_3D`.
+5. **Still provisional:** collision mask (`group_mask`), `is_damped`, `angular_momentum`, `density_scaling`, frictional dissipation and energy totals, contact geometry fields (`contact_point`, `overlap`, reference radii), the periodic cell.
+6. **YADE:** a setter for `O.time` / `O.iter`; setting clump members' relative poses from Python.
 
-Decided on 2 October 2026 and implemented: the quaternion convention, `display_group_names`, FrictMat → `linear_elastic_frictional_3D`, all per-body data in the blocks, `shape_type` / `shape_names`, `blocked_dofs` as a bitmask, the `clump` shape with the members' relative poses, `scene.iteration`, and the meaning of the contact normal.
+Decided and implemented: the quaternion convention, `display_group_names` with the default groups `Points` / `Others`, all per-body data in the blocks (blocked DOFs included), `shape_type` / `shape_names`, `blocked_dofs` as a bitmask, the `clump` shape with the members' relative poses, `scene.iteration`, a contact normal at every timestep. The FrictMat mapping is implemented but provisional.
 
 ### Current limits
 
@@ -163,10 +164,10 @@ Example usage in YADE:
 ```python
 from export_yade_vtkhdf import export_vtkhdf
 
-# one display group: everything in the block 'all'
+# default display groups: spheres in 'Points', every other shape in 'Others'
 export_vtkhdf("output.vtkhdf")
 
-# two display groups: spheres and the rest are separate blocks in ParaView
+# user-defined display groups (the names are required when display_group is given)
 export_vtkhdf("output.vtkhdf",
               display_group_names=["particles", "geometry"],
               display_group=lambda b: 0 if isinstance(b.shape, Sphere) else 1)
@@ -191,7 +192,7 @@ Bodies are appended in increasing `body_id`. Into an empty scene YADE gives them
   ```bash
   python3 implementation/vtkhdf/testing/test_multiblock_utils.py
   ```
-- `vtkhdf/testing/test_export.py`: full round trip in YADE. 36 spheres settle in a box of 5 walls and a fixed box, with two materials with non-default values (one of them a pair whose `young` × `poisson` / `young` is 1 ulp off). It exports them with display groups and checks the file: `/ONDEM` holds only Scene, Materials and Interactions; every block has the same arrays; shapes by name; NaN / −1 where a field does not apply; `blocked_dofs`; quaternion convention; materials; interactions. It then imports into a reset scene, compares every body and every material field (`young` and `poisson` exactly), runs 1000 steps and exports again. It also checks that a missing material field, `shear_damping` ≠ 0, missing engines and an unsupported contact type are rejected. It prints `TEST PASSED` or `TEST FAILED` (exit code 1). The files are written to the temp directory.
+- `vtkhdf/testing/test_export.py`: full round trip in YADE. 36 spheres settle in a box of 5 walls and a fixed box, with two materials with non-default values (one of them a pair whose `young` × `poisson` / `young` is 1 ulp off). It exports them with display groups (and once with the default groups `Points` / `Others`, and once for a scene of spheres only, where `Others` is empty) and checks the file: `/ONDEM` holds only Scene, Materials and Interactions; every block has the same arrays; shapes by name; NaN / −1 where a field does not apply; `blocked_dofs`; quaternion convention; materials; interactions. It then imports into a reset scene, compares every body and every material field (`young` and `poisson` exactly), runs 1000 steps and exports again. It also checks that a missing material field, `shear_damping` ≠ 0, missing engines, an unsupported contact type, and `display_group` without `display_group_names` are rejected. It prints `TEST PASSED` or `TEST FAILED` (exit code 1). The files are written to the temp directory.
   ```bash
   yadedaily -n -x implementation/vtkhdf/testing/test_export.py
   ```
@@ -201,8 +202,8 @@ Bodies are appended in increasing `body_id`. Into an empty scene YADE gives them
   - At the restart instant the contacts and their restored values must be equal. After 1 step and after 2000 steps, positions, velocities and per-contact normal and shear forces must agree within the stated tolerance.
   - Two scenarios:
     - without clumps, with a sphere that lands after the restart (a new contact whose `ks` comes from the restored materials): the restart must be bit-identical (tolerance 1e-10);
-    - with clumps (quiet packing): 1e-12 after 1 step and 1e-7 after 2000 steps (confirmed 2026-10-02); no clump warning on import, and a corrupted relative pose must give one.
-  - Negative controls (shear forces zeroed, stored normals ignored) must exceed the tolerance.
+    - with clumps (quiet packing): acceptance at the restart instant and after 1 step (1e-12); the 2000-step comparison is information only; no clump warning on import, and a corrupted relative pose must give one.
+  - Negative controls (shear forces zeroed, stored normals ignored) must exceed the tolerance where the criterion is (after 2000 steps without clumps, after 1 step with clumps).
   - Needs 1 OpenMP thread, which is the yadedaily default.
   ```bash
   yadedaily -n -x implementation/vtkhdf/testing/test_restart.py
@@ -247,7 +248,7 @@ If you implement support for another DEM code, consider contributing it back to 
 - `schema_parser.py`: Parses the ON-DEM schema from Python files.
 - `codegen_yade.py`: Code generator for YADE (adapt for other codes).
 - `yade_mapping.json`: YADE-specific field mappings.
-- `hdf5_utils.py`: Code-agnostic HDF5 reading and writing, including the VTKHDF multiblock helpers.
+- `hdf5_utils.py`: Code-agnostic HDF5 reading and writing, including the VTKHDF multiblock helpers and the constants `SIMULATION_GROUP` (name of the simulation group) and `QUATERNION_ORDER`.
 - `export_yade_vtkhdf.py`: YADE exporter, generated by `codegen_yade.py` (do not edit by hand).
 - `import_yade_vtkhdf.py`: YADE importer (restart).
 - `testing/test_multiblock_utils.py`, `testing/test_export.py`, `testing/test_restart.py`: tests, see above.
